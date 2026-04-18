@@ -1,10 +1,12 @@
 use app::cli;
 use app::core::config::Config;
+use app::providers::adonet::AzureDevOpsProvider;
+use app::providers::IssueTracker;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    let _config = Config::load().ok();
+    let config = Config::load().ok();
     let cli = cli::parse();
 
     match cli.command {
@@ -48,7 +50,15 @@ async fn main() -> anyhow::Result<()> {
                 cli::GitPlumbingCommands::BranchCurrent => println!("git branch-current"),
             },
             cli::PlumbingCommands::Ado { command } => match command {
-                cli::AdoPlumbingCommands::WiGet { id } => println!("ado wi-get {}", id),
+                cli::AdoPlumbingCommands::WiGet { id } => {
+                    if let Some(config) = config {
+                        let provider = AzureDevOpsProvider::new(&config.ado)?;
+                        let wi = provider.get_work_item(id).await?;
+                        println!("{:?}", wi);
+                    } else {
+                        println!("Config not found");
+                    }
+                }
             },
         },
     }
