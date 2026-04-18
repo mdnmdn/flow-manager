@@ -40,6 +40,14 @@ pub enum Commands {
         command: TodoCommands,
     },
     /// Show the current workflow context
+    // SPECIFICATION:
+    // Snapshot of the current activity. Entry point for every new work session.
+    // - Baseline branch: print branch name and last 5 commits.
+    // - Activity branch: extract WI id from branch name, then:
+    //     a. Fetch WI details (id, title, state, assigned to, tags).
+    //     b. Find PR for this branch (state, draft, mergeable, reviewer count).
+    //     c. Run git status and git log ahead/behind.
+    //     d. Fetch latest CI pipeline run for this branch.
     Context {
         /// Show only work item details
         #[arg(long)]
@@ -55,6 +63,12 @@ pub enum Commands {
         only_pipeline: bool,
     },
     /// Commit changes, handling the docs submodule transparently
+    // SPECIFICATION:
+    // Commit staged changes, handling the _docs submodule when it has pending changes.
+    // - If _docs has uncommitted changes: commit and push _docs first.
+    // - If _docs has unpushed commits: push _docs first.
+    // - Then commit the main repo, updating the submodule pointer if needed.
+    // - Auto-generate message from WI if omitted.
     Commit {
         /// Commit message
         #[arg(short, long)]
@@ -73,6 +87,10 @@ pub enum Commands {
         no_docs: bool,
     },
     /// Push the current branch, including docs handling
+    // SPECIFICATION:
+    // Push current branch to remote, with submodule-awareness.
+    // - Checks _docs for unpushed commits.
+    // - Push _docs first if needed, then stage and commit pointer.
     Push {
         /// Use --force-with-lease
         #[arg(long)]
@@ -82,6 +100,8 @@ pub enum Commands {
         no_docs: bool,
     },
     /// Commit and push in one step
+    // SPECIFICATION:
+    // Shorthand for fm commit --all && fm push.
     Sync {
         /// Commit message
         #[arg(short, long)]
@@ -91,6 +111,8 @@ pub enum Commands {
         docs_message: Option<String>,
     },
     /// Show SonarQube issues
+    // SPECIFICATION:
+    // Show SonarQube issues relevant to the current context.
     Sonar {
         /// SonarQube project key
         #[arg(short, long)]
@@ -110,6 +132,14 @@ pub enum Commands {
 #[derive(Subcommand)]
 pub enum WorkCommands {
     /// Create a WI, branch, and draft PR, then switch locally
+    // SPECIFICATION:
+    // 1. Create ADO WI (User Story/Bug).
+    // 2. If --sonar-project, append open issues to description.
+    // 3. Derive branch name: {type}/{wi-id}-{slug}.
+    // 4. Create remote branch from --target.
+    // 5. Create draft PR linked to WI.
+    // 6. Set WI state to Active.
+    // 7. git fetch && git checkout branch.
     New {
         /// Work item title
         #[arg(long)]
@@ -137,6 +167,15 @@ pub enum WorkCommands {
         sonar_project: Option<String>,
     },
     /// Resume an existing work item
+    // SPECIFICATION:
+    // 1. Resolve ID to WI.
+    // 2. If Closed/Done: print summary and exit.
+    // 3. If Active/New:
+    //    - Derive branch name.
+    //    - Create remote branch/PR if missing (idempotency).
+    //    - Set WI Active.
+    //    - git fetch && git checkout branch.
+    //    - Restore stash named stash-{wi-id}-*.
     Load {
         /// WI id, PR id, or branch name
         id: String,
@@ -145,6 +184,8 @@ pub enum WorkCommands {
         target: Option<String>,
     },
     /// List work items
+    // SPECIFICATION:
+    // Runs WIQL query scoped to the ADO project with the given filters.
     List {
         /// Filter by current user
         #[arg(long)]
@@ -164,6 +205,12 @@ pub enum WorkCommands {
 #[derive(Subcommand)]
 pub enum TaskCommands {
     /// Pause the current activity
+    // SPECIFICATION:
+    // 1. If baseline: exit.
+    // 2. Check git status.
+    // 3. If dirty and no flags: prompt for --stash or --force.
+    // 4. If --stash: git stash push -m "stash-{wi-id}-{slug}".
+    // 5. git push, then switch to baseline.
     Hold {
         /// Stash uncommitted changes
         #[arg(long)]
@@ -176,6 +223,8 @@ pub enum TaskCommands {
         stay: bool,
     },
     /// Update the work item linked to the current activity
+    // SPECIFICATION:
+    // Apply requested fields via ADO WI PATCH.
     Update {
         /// New title
         #[arg(long)]
@@ -194,8 +243,17 @@ pub enum TaskCommands {
         tags: Option<String>,
     },
     /// Return to baseline after the activity is done
+    // SPECIFICATION:
+    // 1. Verify WI closed and PR merged/abandoned.
+    // 2. Switch to baseline, git pull.
     Complete,
     /// Sync the activity branch with the baseline
+    // SPECIFICATION:
+    // Update activity branch with commits from baseline.
+    // - --check: dry-run, show ahead/behind.
+    // - Default: git merge origin/{target}.
+    // - --rebase: git rebase origin/{target}.
+    // - Conflicts: exit and let user resolve.
     Sync {
         /// Use rebase instead of merge
         #[arg(long)]
@@ -209,11 +267,16 @@ pub enum TaskCommands {
 #[derive(Subcommand)]
 pub enum PrCommands {
     /// Show PR details
+    // SPECIFICATION:
+    // Fetch PR details: title, state, draft, reviewers, merge status, linked WIs.
     Show {
         /// PR id, WI id, or branch
         id: Option<String>,
     },
     /// Update the PR linked to the current activity
+    // SPECIFICATION:
+    // Apply requested changes via ADO PR PATCH.
+    // - --publish: isDraft=false.
     Update {
         /// New title
         #[arg(long)]
@@ -232,6 +295,11 @@ pub enum PrCommands {
         add_reviewer: Vec<String>,
     },
     /// Complete the PR linked to the current activity
+    // SPECIFICATION:
+    // Complete (merge) the PR using configured strategy.
+    // - Error if draft.
+    // - Error if not mergeable.
+    // - Complete PR and Close WI.
     Merge {
         /// Merge strategy
         #[arg(long)]
@@ -244,6 +312,10 @@ pub enum PrCommands {
         bypass_policy: bool,
     },
     /// Switch to another PR branch for review
+    // SPECIFICATION:
+    // 1. Auto-stash current activity if dirty.
+    // 2. Resolve ID to PR and its branch.
+    // 3. git fetch && git checkout pr-branch.
     Review {
         /// PR id, WI id, or branch
         id: String,
@@ -253,12 +325,17 @@ pub enum PrCommands {
 #[derive(Subcommand)]
 pub enum PipelineCommands {
     /// Run a pipeline for the current branch
+    // SPECIFICATION:
+    // Trigger a CI pipeline for the current branch.
     Run {
         /// Pipeline definition ID
         #[arg(long)]
         id: Option<i32>,
     },
     /// Show pipeline status for the current branch
+    // SPECIFICATION:
+    // Show the latest CI run status for the current branch.
+    // - --watch: poll until completed.
     Status {
         /// Run ID
         #[arg(long)]
@@ -272,6 +349,8 @@ pub enum PipelineCommands {
 #[derive(Subcommand)]
 pub enum TodoCommands {
     /// Show todos
+    // SPECIFICATION:
+    // List all child Tasks (todos) of the current User Story.
     Show {
         /// Include closed items
         #[arg(long)]
@@ -281,6 +360,8 @@ pub enum TodoCommands {
         detail: bool,
     },
     /// Create a todo
+    // SPECIFICATION:
+    // Add a new child Task under the current User Story.
     New {
         /// Todo title
         #[arg(long)]
@@ -296,21 +377,29 @@ pub enum TodoCommands {
         pick: bool,
     },
     /// Set a todo Active
+    // SPECIFICATION:
+    // Set a todo to Active.
     Pick {
         /// Task id or title fragment
         reference: String,
     },
     /// Set a todo Closed
+    // SPECIFICATION:
+    // Set a todo to Closed.
     Complete {
         /// Task id or title fragment
         reference: String,
     },
     /// Set a todo back to New
+    // SPECIFICATION:
+    // Set a todo back to New.
     Reopen {
         /// Task id or title fragment
         reference: String,
     },
     /// Update a todo
+    // SPECIFICATION:
+    // Update a todo's title, description, or assignment.
     Update {
         /// Task id or title fragment
         reference: String,
@@ -328,6 +417,8 @@ pub enum TodoCommands {
         state: Option<String>,
     },
     /// Show the next New todo
+    // SPECIFICATION:
+    // Show the next open todo (creation order).
     Next {
         /// Set Active immediately
         #[arg(long)]
