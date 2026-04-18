@@ -21,6 +21,10 @@ Flow Manager (`fm`) is a Rust-based CLI tool designed to automate and simplify t
 
 ## Instructions for Agents
 - When adding new commands, define them in `src/cli/` and implement the logic in `src/commands/`.
+- Before submitting a PR, always run:
+    - `cargo fmt --all` to ensure consistent code style.
+    - `cargo clippy -- -D warnings` to check for lints and common issues.
+    - `cargo test` to ensure all tests pass.
 - Ensure all new features are provider-agnostic in `src/core/`, using traits defined in `src/providers/`.
 - Maintain the idempotency of porcelain commands.
 - Update `_docs/project-structure.md` if the architecture changes.

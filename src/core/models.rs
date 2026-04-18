@@ -6,6 +6,9 @@ pub struct WorkItem {
     pub title: String,
     pub work_item_type: String,
     pub state: String,
+    pub description: Option<String>,
+    pub assigned_to: Option<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

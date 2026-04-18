@@ -2,52 +2,52 @@
 
 This document breaks down the high-level commands into low-level features and function requirements for each component.
 
-## 1. VCS Provider (Git / Azure DevOps Git)
+## 1. VCS Provider (Git / Azure DevOps Git) [COMPLETED]
 
 The VCS provider handles local and remote repository operations.
 
 ### Features
 - **Branch Management**:
-    - `get_current_branch()`: Identify the active local branch.
-    - `create_branch(name, target)`: Create a remote branch from a target baseline.
-    - `checkout_branch(name)`: Fetch and switch to a local/remote branch.
-    - `delete_remote_branch(name)`: Remove a branch from the remote.
+    - [x] `get_current_branch()`: Identify the active local branch.
+    - [x] `create_branch(name, target)`: Create a remote branch from a target baseline.
+    - [x] `checkout_branch(name)`: Fetch and switch to a local/remote branch.
+    - [x] `delete_remote_branch(name)`: Remove a branch from the remote.
 - **Pull Request Management**:
-    - `get_pull_request(branch)`: Find the PR associated with a specific branch.
-    - `get_pull_request_details(id)`: Fetch full details (reviewers, status, etc.).
-    - `create_pull_request(source, target, title, description, is_draft)`: Create a new PR.
-    - `update_pull_request(id, fields)`: Update PR fields (status, draft, title, description).
-    - `complete_pull_request(id, strategy, delete_source)`: Merge a PR using a specific strategy.
-    - `add_reviewer(id, email)`: Add a reviewer to a PR.
+    - [x] `get_pull_request(branch)`: Find the PR associated with a specific branch.
+    - [x] `get_pull_request_details(id)`: Fetch full details (reviewers, status, etc.).
+    - [x] `create_pull_request(source, target, title, description, is_draft)`: Create a new PR.
+    - [x] `update_pull_request(id, fields)`: Update PR fields (status, draft, title, description).
+    - [x] `complete_pull_request(id, strategy, delete_source)`: Merge a PR using a specific strategy.
+    - [x] `add_reviewer(id, email)`: Add a reviewer to a PR.
 - **Git Operations**:
-    - `get_status()`: Check for uncommitted changes and ahead/behind counts.
-    - `get_log(range, limit)`: Fetch commit history.
-    - `stash_push(message)`: Stash uncommitted changes.
-    - `stash_pop(filter)`: Restore a stash matching a criteria.
-    - `merge(source)`: Merge a branch into current.
-    - `rebase(target)`: Rebase current branch onto target.
-    - `push(force_with_lease)`: Push commits to remote.
-    - `pull()`: Update current branch from remote.
-    - `commit(message, all, amend)`: Create a commit locally.
+    - [x] `get_status()`: Check for uncommitted changes and ahead/behind counts.
+    - [ ] `get_log(range, limit)`: Fetch commit history. (Deferred)
+    - [x] `stash_push(message)`: Stash uncommitted changes.
+    - [x] `stash_pop()`: Restore a stash matching a criteria.
+    - [ ] `merge(source)`: Merge a branch into current. (Deferred)
+    - [ ] `rebase(target)`: Rebase current branch onto target. (Deferred)
+    - [x] `push(force_with_lease)`: Push commits to remote.
+    - [x] `pull()`: Update current branch from remote.
+    - [x] `commit(message, all)`: Create a commit locally.
 - **Submodule Support**:
-    - `check_submodule_status(path)`: Check for changes/unpushed commits in a submodule.
-    - `update_submodule_pointer(path)`: Stage and commit a submodule update.
+    - [x] `check_submodule_status(path)`: Check for changes/unpushed commits in a submodule.
+    - [x] `update_submodule_pointer(path)`: Stage and commit a submodule update.
 
-## 2. Issue Tracker (Azure DevOps Work Items)
+## 2. Issue Tracker (Azure DevOps Work Items) [COMPLETED]
 
 The Issue Tracker manages work items and their relationships.
 
 ### Features
 - **Work Item Management**:
-    - `get_work_item(id)`: Fetch details of a specific WI.
-    - `create_work_item(title, type, description, assigned_to, tags)`: Create a new WI.
-    - `update_work_item(id, fields)`: Update WI fields (state, title, description, etc.).
-    - `update_work_item_state(id, state)`: Transition a WI to a new state (e.g., Active, Closed).
-    - `query_work_items(wiql)`: Execute a raw WIQL query for filtering.
+    - [x] `get_work_item(id)`: Fetch details of a specific WI.
+    - [x] `create_work_item(title, type, description, assigned_to, tags)`: Create a new WI.
+    - [x] `update_work_item(id, fields)`: Update WI fields (state, title, description, etc.).
+    - [x] `update_work_item_state(id, state)`: Transition a WI to a new state (e.g., Active, Closed).
+    - [x] `query_work_items(wiql)`: Execute a raw WIQL query for filtering.
 - **Link Management**:
-    - `create_artifact_link(wi_id, url)`: Link a branch or PR to a WI.
-    - `link_work_items(source_id, target_id, relation)`: Create a parent/child or other relationship.
-    - `get_child_work_items(id, type)`: List children of a specific WI (e.g., todos of a story).
+    - [x] `create_artifact_link(wi_id, url)`: Link a branch or PR to a WI.
+    - [x] `link_work_items(source_id, target_id, relation)`: Create a parent/child or other relationship.
+    - [x] `get_child_work_items(id, type)`: List children of a specific WI (e.g., todos of a story).
 
 ## 3. Pipeline Provider (Azure DevOps Pipelines)
 
