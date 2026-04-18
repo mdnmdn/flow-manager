@@ -1,2 +1,12 @@
+pub mod work;
+pub mod task;
+pub mod pr;
+pub mod pipeline;
+pub mod todo;
 pub mod plumbing;
-pub mod porcelain;
+
+pub mod context;
+pub mod commit;
+pub mod push;
+pub mod sync;
+pub mod sonar;
