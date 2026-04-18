@@ -42,15 +42,15 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          sudo apt-get install -y libssl-dev:arm64
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config-aarch64-linux-gnu libssl-dev
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
           FM_VERSION: ${{ github.ref_name }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          OPENSSL_DIR: /usr/aarch64-linux-gnu
+          PKG_CONFIG: aarch64-linux-gnu-pkg-config
+          PKG_CONFIG_SYSROOT_DIR: /
 
       - name: Package
         run: |
