@@ -1,5 +1,6 @@
 pub mod commit;
 pub mod context;
+pub mod doctor;
 pub mod pipeline;
 pub mod plumbing;
 pub mod pr;

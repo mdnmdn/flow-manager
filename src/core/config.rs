@@ -29,7 +29,8 @@ pub struct FmConfig {
     pub default_target: String,
     #[serde(default = "default_wi_type")]
     pub default_wi_type: String,
-    pub docs_submodule: Option<String>,
+    #[serde(default)]
+    pub submodules: Vec<String>,
 }
 
 fn default_merge_strategy() -> String {
@@ -51,7 +52,7 @@ impl Config {
             .set_default("fm.merge_strategy", "squash")?
             .set_default("fm.default_target", "main")?
             .set_default("fm.default_wi_type", "User Story")?
-            .set_default("fm.docs_submodule", "_docs")?
+            .set_default("fm.submodules", Vec::<String>::new())?
             // Add configuration from files
             .add_source(File::with_name("fm").required(false))
             .add_source(File::with_name(".env").required(false))

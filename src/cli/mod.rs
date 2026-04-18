@@ -124,6 +124,12 @@ pub enum Commands {
         #[arg(short, long, default_value_t = 20)]
         max: i32,
     },
+    /// Run diagnostic checks
+    Doctor {
+        /// Attempt to fix broken invariants
+        #[arg(long)]
+        fix: bool,
+    },
     /// Low-level plumbing commands
     #[command(subcommand)]
     Plumbing(PlumbingCommands),

@@ -1,30 +1,92 @@
-pub async fn run(
-    _only_wi: bool,
-    _only_pr: bool,
-    _only_git: bool,
-    _only_pipeline: bool,
-) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Snapshot of the current activity. Entry point for every new work session.
-    // - Baseline branch: print branch name and last 5 commits.
-    // - Activity branch: extract WI id from branch name, then:
-    //     a. Fetch WI details (id, title, state, assigned to, tags).
-    //     b. Find PR for this branch (state, draft, mergeable, reviewer count).
-    //     c. Run git status and git log ahead/behind.
-    //     d. Fetch latest CI pipeline run for this branch.
-    //
-    // PSEUDO-CODE:
-    // 1. Detect current branch via VCS provider.
-    // 2. If branch is baseline (main/develop):
-    //    - List last 5 commits.
-    //    - Render baseline template.
-    // 3. If branch is activity (feature/*, fix/*):
-    //    - Parse WI ID from branch name.
-    //    - Call IssueTracker::get_work_item(id).
-    //    - Call VCSProvider::get_pull_request(branch).
-    //    - Call VCSProvider::get_status() (ahead/behind/dirty).
-    //    - Call PipelineProvider::get_latest_run(branch).
-    //    - Render activity template with all gathered info.
-    println!("Scaffold: fm context");
+use crate::core::config::Config;
+use crate::core::context::{Context, ContextManager, OutputFormatter};
+use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::git::LocalGitProvider;
+use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
+use anyhow::Result;
+use serde::Serialize;
+use tokio::join;
+
+#[derive(Serialize)]
+struct ContextResult {
+    branch: String,
+    context_type: String,
+    work_item: Option<crate::core::models::WorkItem>,
+    pull_request: Option<crate::core::models::PullRequest>,
+    pipeline_run: Option<crate::core::models::PipelineRun>,
+    git_status: String,
+}
+
+pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bool) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+    let context = ContextManager::detect(&branch);
+
+    match context {
+        Context::Baseline { branch } => {
+            println!("## Context — `{}` (baseline)", branch);
+            let log = git.run_git(&["log", "--oneline", "-n", "5"])?;
+            println!("\nLast commits:\n{}", log);
+        }
+        Context::Activity { branch, wi_id, .. } => {
+            // Parallelize fetches
+            let wi_fut = ado.get_work_item(wi_id);
+            let pr_fut = ado.get_pull_request_by_branch(&config.ado.project, &branch);
+            let git_status_fut = git.get_status();
+            let pipeline_fut = ado.get_latest_run(&branch);
+
+            let (wi_res, pr_res, git_res, pipe_res) =
+                join!(wi_fut, pr_fut, git_status_fut, pipeline_fut);
+
+            let wi = wi_res.ok();
+            let pr = pr_res.unwrap_or(None);
+            let git_status = git_res.unwrap_or_default();
+            let pipe = pipe_res.unwrap_or(None);
+
+            if only_wi {
+                if let Some(w) = &wi {
+                    println!("### Work Item\n| | |\n|-|---|\n| ID | #{} |\n| Title | {} |\n| State | {} |", w.id, w.title, w.state);
+                }
+            } else if only_pr {
+                if let Some(p) = &pr {
+                    println!("### Pull Request\n| | |\n|-|---|\n| ID | #{} |\n| Title | {} |\n| State | {} |", p.id, p.title, p.status);
+                }
+            } else if only_git {
+                println!("### Git Status\n{}", git_status);
+            } else if only_pipeline {
+                if let Some(p) = &pipe {
+                    println!("### CI Pipeline\n| | |\n|-|---|\n| ID | #{} |\n| Status | {} |\n| Result | {:?} |", p.id, p.status, p.result);
+                }
+            } else {
+                println!("## Context — `{}`", branch);
+                if let Some(w) = &wi {
+                    println!("\n### Work Item\n- #{}: {} ({})", w.id, w.title, w.state);
+                }
+                if let Some(p) = &pr {
+                    println!(
+                        "\n### Pull Request\n- #{}: {} ({})",
+                        p.id, p.title, p.status
+                    );
+                }
+                println!(
+                    "\n### Git Status\n{}",
+                    if git_status.is_empty() {
+                        "Clean"
+                    } else {
+                        &git_status
+                    }
+                );
+                if let Some(p) = &pipe {
+                    println!(
+                        "\n### CI Pipeline\n- #{}: {} ({:?})",
+                        p.id, p.status, p.result
+                    );
+                }
+            }
+        }
+    }
+
     Ok(())
 }

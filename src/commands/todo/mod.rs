@@ -1,91 +1,226 @@
-pub async fn show(all: bool, detail: bool) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // List all child Tasks (todos) of the current User Story.
-    //
-    // PSEUDO-CODE:
-    // 1. Get current WI ID.
-    // 2. IssueTracker::get_child_work_items(id, type="Task").
-    // 3. Format and display.
-    println!("Scaffold: fm todo show --all {} --detail {}", all, detail);
+use crate::core::config::Config;
+use crate::core::context::{Context, ContextManager};
+use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::git::LocalGitProvider;
+use crate::providers::IssueTracker;
+use crate::providers::VCSProvider;
+use anyhow::{anyhow, Result};
+
+pub async fn show(all: bool, detail: bool) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+
+    println!("## Todos for WI #{}", wi_id);
+    for child in children {
+        if !all && (child.state == "Closed" || child.state == "Done") {
+            continue;
+        }
+        let icon = if child.state == "Active" {
+            "●"
+        } else if child.state == "Closed" || child.state == "Done" {
+            "✓"
+        } else {
+            "○"
+        };
+        println!(
+            "  {}  #{}  {}  ({})",
+            icon, child.id, child.title, child.state
+        );
+        if detail {
+            if let Some(desc) = child.description {
+                println!("             {}", desc);
+            }
+        }
+    }
+
     Ok(())
 }
 
 pub async fn new(
     title: String,
-    _description: Option<String>,
-    _assigned_to: Option<String>,
-    _pick: bool,
-) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Add a new child Task under the current User Story.
-    //
-    // PSEUDO-CODE:
-    // 1. Get current WI ID.
-    // 2. IssueTracker::create_work_item(title, type="Task", ...).
-    // 3. IssueTracker::link_work_items(parent_id, child_id, "Child").
-    // 4. If pick: IssueTracker::update_work_item_state(child_id, "Active").
-    println!("Scaffold: fm todo new --title {}", title);
+    description: Option<String>,
+    assigned_to: Option<String>,
+    pick: bool,
+) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let task = ado
+        .create_work_item(
+            &title,
+            "Task",
+            description.as_deref(),
+            assigned_to.as_deref(),
+            None,
+        )
+        .await?;
+    ado.link_work_items(wi_id, task.id, "System.LinkTypes.Hierarchy-Forward")
+        .await?;
+
+    if pick {
+        ado.update_work_item_state(task.id, "Active").await?;
+    }
+
+    println!("Todo #{} created and linked to WI #{}.", task.id, wi_id);
     Ok(())
 }
 
-pub async fn pick(reference: String) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Set a todo to Active.
-    //
-    // PSEUDO-CODE:
-    // 1. Resolve reference to Task ID.
-    // 2. IssueTracker::update_work_item_state(id, "Active").
-    println!("Scaffold: fm todo pick {}", reference);
+async fn resolve_ref(ado: &AzureDevOpsProvider, wi_id: i32, reference: &str) -> Result<i32> {
+    if let Ok(id) = reference.parse::<i32>() {
+        return Ok(id);
+    }
+
+    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+    let matches: Vec<_> = children
+        .into_iter()
+        .filter(|c| c.title.to_lowercase().contains(&reference.to_lowercase()))
+        .collect();
+
+    if matches.is_empty() {
+        return Err(anyhow!("No todo matching `{}` found.", reference));
+    }
+    if matches.len() > 1 {
+        println!("Multiple matches found:");
+        for m in &matches {
+            println!("  #{}  {}", m.id, m.title);
+        }
+        return Err(anyhow!("Ambiguous reference `{}`", reference));
+    }
+
+    Ok(matches[0].id)
+}
+
+pub async fn pick(reference: String) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
+    ado.update_work_item_state(task_id, "Active").await?;
+
+    println!("Todo #{} is now Active.", task_id);
     Ok(())
 }
 
-pub async fn complete(reference: String) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Set a todo to Closed.
-    //
-    // PSEUDO-CODE:
-    // 1. Resolve reference to Task ID.
-    // 2. IssueTracker::update_work_item_state(id, "Closed").
-    println!("Scaffold: fm todo complete {}", reference);
+pub async fn complete(reference: String) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
+    ado.update_work_item_state(task_id, "Closed").await?;
+
+    println!("Todo #{} is now Closed.", task_id);
     Ok(())
 }
 
-pub async fn reopen(reference: String) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Set a todo back to New.
-    //
-    // PSEUDO-CODE:
-    // 1. Resolve reference to Task ID.
-    // 2. IssueTracker::update_work_item_state(id, "New").
-    println!("Scaffold: fm todo reopen {}", reference);
+pub async fn reopen(reference: String) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
+    ado.update_work_item_state(task_id, "New").await?;
+
+    println!("Todo #{} is now New.", task_id);
     Ok(())
 }
 
 pub async fn update(
     reference: String,
-    _title: Option<String>,
-    _description: Option<String>,
-    _assigned_to: Option<String>,
-    _state: Option<String>,
-) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Update a todo's title, description, or assignment.
-    //
-    // PSEUDO-CODE:
-    // 1. Resolve reference to Task ID.
-    // 2. IssueTracker::update_work_item(id, fields).
-    println!("Scaffold: fm todo update {}", reference);
+    title: Option<String>,
+    description: Option<String>,
+    assigned_to: Option<String>,
+    state: Option<String>,
+) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
+    ado.update_work_item(
+        task_id,
+        title.as_deref(),
+        description.as_deref(),
+        assigned_to.as_deref(),
+        None,
+    )
+    .await?;
+
+    if let Some(s) = state {
+        ado.update_work_item_state(task_id, &s).await?;
+    }
+
+    println!("Todo #{} updated.", task_id);
     Ok(())
 }
 
-pub async fn next(pick: bool) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Show the next open todo (creation order).
-    //
-    // PSEUDO-CODE:
-    // 1. Fetch child todos with state "New".
-    // 2. Pick the first one.
-    // 3. If pick: IssueTracker::update_work_item_state(id, "Active").
-    println!("Scaffold: fm todo next --pick {}", pick);
+pub async fn next(pick_it: bool) -> Result<()> {
+    let config = Config::load()?;
+    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+
+    let wi_id = match ContextManager::detect(&branch) {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+    let next_task = children
+        .into_iter()
+        .filter(|c| c.state == "New")
+        .min_by_key(|c| c.id);
+
+    if let Some(task) = next_task {
+        println!("Next Todo: #{} {}", task.id, task.title);
+        if pick_it {
+            ado.update_work_item_state(task.id, "Active").await?;
+            println!("Todo #{} is now Active.", task.id);
+        }
+    } else {
+        println!("No more New todos.");
+    }
+
     Ok(())
 }
