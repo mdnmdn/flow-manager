@@ -1071,7 +1071,10 @@ mod tests {
         let (mut server, provider) = setup_mock_server().await;
 
         let mock = server
-            .mock("GET", "/test-project/_apis/pipelines/runs?branchName=refs/heads/feature&api-version=7.1")
+            .mock(
+                "GET",
+                "/test-project/_apis/pipelines/runs?branchName=refs/heads/feature&api-version=7.1",
+            )
             .with_status(200)
             .with_body(
                 json!({
@@ -1104,7 +1107,10 @@ mod tests {
         let (mut server, provider) = setup_mock_server().await;
 
         let mock = server
-            .mock("GET", "/test-project/_apis/pipelines/runs/123?api-version=7.1")
+            .mock(
+                "GET",
+                "/test-project/_apis/pipelines/runs/123?api-version=7.1",
+            )
             .with_status(200)
             .with_body(
                 json!({
@@ -1662,7 +1668,11 @@ impl PipelineProvider for AzureDevOpsProvider {
     }
 
     async fn get_run_status(&self, run_id: i32) -> Result<PipelineRun> {
-        let url = self.v(&format!("{}/pipelines/runs/{}", self.base_api_url(), run_id));
+        let url = self.v(&format!(
+            "{}/pipelines/runs/{}",
+            self.base_api_url(),
+            run_id
+        ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {

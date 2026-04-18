@@ -34,7 +34,10 @@ impl QualityProvider for SonarProvider {
         project_key: &str,
         severity: Option<&str>,
     ) -> Result<Vec<QualityIssue>> {
-        let mut url = format!("{}/api/issues/search?componentKeys={}&resolved=false", self.url, project_key);
+        let mut url = format!(
+            "{}/api/issues/search?componentKeys={}&resolved=false",
+            self.url, project_key
+        );
 
         if let Some(sev) = severity {
             url.push_str(&format!("&severities={}", sev));
@@ -43,7 +46,10 @@ impl QualityProvider for SonarProvider {
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to fetch SonarQube issues: {}", resp.text().await?));
+            return Err(anyhow!(
+                "Failed to fetch SonarQube issues: {}",
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -81,7 +87,10 @@ mod tests {
         let provider = SonarProvider::new(&config).unwrap();
 
         let mock = server
-            .mock("GET", "/api/issues/search?componentKeys=my-project&resolved=false")
+            .mock(
+                "GET",
+                "/api/issues/search?componentKeys=my-project&resolved=false",
+            )
             .with_status(200)
             .with_body(
                 json!({
@@ -99,7 +108,10 @@ mod tests {
             .create_async()
             .await;
 
-        let issues = provider.get_open_issues("my-project", None::<&str>).await.unwrap();
+        let issues = provider
+            .get_open_issues("my-project", None::<&str>)
+            .await
+            .unwrap();
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].key, "issue-1");
         assert_eq!(issues[0].severity, "MAJOR");
