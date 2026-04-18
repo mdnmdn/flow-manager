@@ -39,11 +39,9 @@ async fn main() -> anyhow::Result<()> {
             } => commands::work::list(mine, state, type_name, max).await?,
         },
         cli::Commands::Task { command } => match command {
-            cli::TaskCommands::Hold {
-                stash,
-                force,
-                stay,
-            } => commands::task::hold(stash, force, stay).await?,
+            cli::TaskCommands::Hold { stash, force, stay } => {
+                commands::task::hold(stash, force, stay).await?
+            }
             cli::TaskCommands::Update {
                 title,
                 state,
@@ -64,9 +62,7 @@ async fn main() -> anyhow::Result<()> {
                 publish,
                 status,
                 add_reviewer,
-            } => {
-                commands::pr::update(title, description, publish, status, add_reviewer).await?
-            }
+            } => commands::pr::update(title, description, publish, status, add_reviewer).await?,
             cli::PrCommands::Merge {
                 strategy,
                 delete_source_branch,
@@ -92,18 +88,14 @@ async fn main() -> anyhow::Result<()> {
             cli::TodoCommands::Complete { reference } => {
                 commands::todo::complete(reference).await?
             }
-            cli::TodoCommands::Reopen { reference } => {
-                commands::todo::reopen(reference).await?
-            }
+            cli::TodoCommands::Reopen { reference } => commands::todo::reopen(reference).await?,
             cli::TodoCommands::Update {
                 reference,
                 title,
                 description,
                 assigned_to,
                 state,
-            } => {
-                commands::todo::update(reference, title, description, assigned_to, state).await?
-            }
+            } => commands::todo::update(reference, title, description, assigned_to, state).await?,
             cli::TodoCommands::Next { pick } => commands::todo::next(pick).await?,
         },
         cli::Commands::Context {

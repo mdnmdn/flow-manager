@@ -21,6 +21,9 @@ pub async fn status(run_id: Option<i32>, watch: bool) -> anyhow::Result<()> {
     //    - Fetch status.
     //    - Render.
     //    - Break if completed.
-    println!("Scaffold: fm pipeline status --run-id {:?} --watch {}", run_id, watch);
+    println!(
+        "Scaffold: fm pipeline status --run-id {:?} --watch {}",
+        run_id, watch
+    );
     Ok(())
 }

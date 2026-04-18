@@ -40,3 +40,24 @@ pub struct Repository {
     pub project_id: String,
     pub default_branch: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MergeStrategy {
+    Squash,
+    Rebase,
+    RebaseMerge,
+    NoFastForward,
+}
+
+impl std::fmt::Display for MergeStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            MergeStrategy::Squash => "squash",
+            MergeStrategy::Rebase => "rebase",
+            MergeStrategy::RebaseMerge => "rebaseMerge",
+            MergeStrategy::NoFastForward => "noFastForward",
+        };
+        write!(f, "{}", s)
+    }
+}
