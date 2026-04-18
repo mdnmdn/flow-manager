@@ -134,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
             },
         },
         cli::Commands::Version => {
-            println!("fm version {}", env!("FM_VERSION"));
+            println!("fm version {}", option_env!("FM_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")));
         }
     }
 
