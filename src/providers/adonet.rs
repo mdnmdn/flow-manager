@@ -332,7 +332,10 @@ impl IssueTracker for AzureDevOpsProvider {
         let resp = self.client.post(url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to query work items: {}", resp.text().await?));
+            return Err(anyhow!(
+                "Failed to query work items: {}",
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -387,7 +390,11 @@ impl IssueTracker for AzureDevOpsProvider {
     }
 
     async fn link_work_items(&self, source_id: i32, target_id: i32, relation: &str) -> Result<()> {
-        let api_url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), source_id));
+        let api_url = self.v(&format!(
+            "{}/wit/workitems/{}",
+            self.base_api_url(),
+            source_id
+        ));
 
         // We need the target work item URL
         let target_wi_url = format!("{}/wit/workitems/{}", self.base_api_url(), target_id);
@@ -447,7 +454,7 @@ impl IssueTracker for AzureDevOpsProvider {
                 .filter_map(|r| {
                     r["url"]
                         .as_str()
-                        .and_then(|url| url.split('/').last()?.parse::<i32>().ok())
+                        .and_then(|url| url.split('/').next_back()?.parse::<i32>().ok())
                 })
                 .collect();
 
@@ -598,7 +605,10 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.update_work_item_state(123, "Active").await.unwrap();
+        let result = provider
+            .update_work_item_state(123, "Active")
+            .await
+            .unwrap();
         assert_eq!(result.state, "Active");
 
         mock.assert_async().await;
@@ -703,10 +713,7 @@ mod tests {
         let (mut server, provider) = setup_mock_server().await;
 
         let mock = server
-            .mock(
-                "GET",
-                "/test-project/_apis/wit/workitems/123",
-            )
+            .mock("GET", "/test-project/_apis/wit/workitems/123")
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("$expand".to_string(), "fields".to_string()),
                 mockito::Matcher::UrlEncoded("api-version".to_string(), "7.1".to_string()),
@@ -867,10 +874,7 @@ mod tests {
         let (mut server, provider) = setup_mock_server().await;
 
         let mock_get_rels = server
-            .mock(
-                "GET",
-                "/test-project/_apis/wit/workitems/123",
-            )
+            .mock("GET", "/test-project/_apis/wit/workitems/123")
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("$expand".to_string(), "relations".to_string()),
                 mockito::Matcher::UrlEncoded("api-version".to_string(), "7.1".to_string()),
@@ -1444,34 +1448,54 @@ impl VCSProvider for AzureDevOpsProvider {
     }
 
     async fn get_current_branch(&self) -> Result<String> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn checkout_branch(&self, _name: &str) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn get_status(&self) -> Result<String> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn stash_push(&self, _message: &str) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn stash_pop(&self) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn push(&self, _force: bool) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn pull(&self) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn commit(&self, _message: &str, _all: bool) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn check_submodule_status(&self, _path: &str) -> Result<bool> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
     async fn update_submodule_pointer(&self, _path: &str) -> Result<()> {
-        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
     }
 }
 

@@ -26,12 +26,7 @@ pub trait IssueTracker {
     async fn update_work_item_state(&self, id: i32, state: &str) -> Result<WorkItem>;
     async fn query_work_items(&self, wiql: &str) -> Result<Vec<WorkItem>>;
     async fn create_artifact_link(&self, wi_id: i32, url: &str) -> Result<()>;
-    async fn link_work_items(
-        &self,
-        source_id: i32,
-        target_id: i32,
-        relation: &str,
-    ) -> Result<()>;
+    async fn link_work_items(&self, source_id: i32, target_id: i32, relation: &str) -> Result<()>;
     async fn get_child_work_items(
         &self,
         id: i32,
