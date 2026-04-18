@@ -1,5 +1,5 @@
-use app::cli;
-use app::commands;
+use fm::cli;
+use fm::commands;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -133,6 +133,9 @@ async fn main() -> anyhow::Result<()> {
                 }
             },
         },
+        cli::Commands::Version => {
+            println!("fm version {}", env!("FM_VERSION"));
+        }
     }
 
     Ok(())
