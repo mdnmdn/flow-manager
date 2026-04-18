@@ -1,40 +1,37 @@
 # Flow Manager (fm) Command Specifications
 
-This document summarizes the expected commands and features of the `fm` CLI tool.
+This document summarizes the expected commands and features of the `fm` CLI tool. All commands follow a specific logic described in the pseudo-code within the source files.
 
 ## Global Options
 - `--format`: Output format (default: `markdown`, also supports `json`).
 
 ## Context Commands
 ### `fm context`
-- **Goal**: Snapshot of the current activity.
-- **Baseline branch**: Shows branch name and last 5 commits.
-- **Activity branch**: Extracts WI ID from branch, fetches WI details, PR status, Git status (ahead/behind), and latest CI run.
+- **Goal**: Snapshot of the current activity. Entry point for every new work session.
+- **Implementation**: `src/commands/context.rs`
 
 ## Work Commands (`fm work ...`)
+- **Implementation**: `src/commands/work/mod.rs`
 ### `fm work new`
 - **Goal**: Start a new activity (WI, branch, draft PR).
-- **Features**: Idempotent creation, Sonar issues integration in description.
 ### `fm work load <id>`
-- **Goal**: Resume an existing activity.
-- **Features**: Context repair (ensures branch/PR/links exist), auto-stash restoration.
+- **Goal**: Resume an existing activity, repairing context if necessary.
 ### `fm work list`
 - **Goal**: List active work items.
-- **Features**: Filters for current user, state, and type.
 
 ## Task Commands (`fm task ...`)
+- **Implementation**: `src/commands/task/mod.rs`
 ### `fm task hold`
 - **Goal**: Pause current activity and return to baseline.
-- **Features**: Auto-stash option, push before switching.
 ### `fm task update`
 - **Goal**: Update the linked Work Item.
 ### `fm task sync`
-- **Goal**: Sync activity branch with baseline.
-- **Features**: Merge (default) or Rebase, dry-run check.
+- **Goal**: Sync activity branch with baseline using merge or rebase.
 ### `fm task complete`
 - **Goal**: Finalize activity after PR is merged.
 
 ## PR Commands (`fm pr ...`)
+- **Implementation**: `src/commands/pr/mod.rs`
 ### `fm pr show [<id>]`
 - **Goal**: Display PR details.
 ### `fm pr update`
@@ -45,30 +42,31 @@ This document summarizes the expected commands and features of the `fm` CLI tool
 - **Goal**: Switch to another PR for review (auto-stashes current work).
 
 ## Todo Commands (`fm todo ...`)
+- **Implementation**: `src/commands/todo/mod.rs`
 - Manage child Tasks of the current User Story.
-- `show`: List todos.
-- `new`: Create a new child Task.
-- `pick`: Mark a todo as Active.
-- `complete`: Mark a todo as Closed.
-- `reopen`: Re-open a todo.
-- `update`: Update todo details.
-- `next`: Show/pick the next unstarted todo.
+- `show`, `new`, `pick`, `complete`, `reopen`, `update`, `next`.
 
 ## Pipeline Commands (`fm pipeline ...`)
+- **Implementation**: `src/commands/pipeline/mod.rs`
 - `run`: Trigger CI for the current branch.
 - `status`: Show/watch latest run status.
 
 ## Source Control Commands
 ### `fm commit`
 - **Goal**: Commit with transparent `_docs` submodule handling.
+- **Implementation**: `src/commands/commit.rs`
 ### `fm push`
 - **Goal**: Push with transparent `_docs` submodule handling.
+- **Implementation**: `src/commands/push.rs`
 ### `fm sync`
 - **Goal**: `commit --all` + `push`.
+- **Implementation**: `src/commands/sync.rs`
 
 ## Quality Commands
 ### `fm sonar`
 - **Goal**: List SonarQube issues for the current project.
+- **Implementation**: `src/commands/sonar.rs`
 
 ## Plumbing Commands
-- Low-level access to Git and ADO providers for debugging or complex scenarios.
+- **Implementation**: `src/commands/plumbing/`
+- Low-level access to Git and ADO providers.
