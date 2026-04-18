@@ -1,4 +1,8 @@
-pub async fn run(project: Option<String>, _severity: Option<String>, _max: i32) -> anyhow::Result<()> {
+pub async fn run(
+    project: Option<String>,
+    _severity: Option<String>,
+    _max: i32,
+) -> anyhow::Result<()> {
     // SPECIFICATION:
     // Show SonarQube issues relevant to the current context.
     //

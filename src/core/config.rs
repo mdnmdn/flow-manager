@@ -1,5 +1,5 @@
+use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
-use config::{Config as ConfigLoader, ConfigError, File, Environment};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {

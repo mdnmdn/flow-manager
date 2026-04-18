@@ -1,9 +1,11 @@
+use crate::core::models::{
+    MergeStrategy, Pipeline, PipelineRun, PullRequest, Repository, WorkItem,
+};
+use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use crate::providers::{IssueTracker, VCSProvider, PipelineProvider};
-use crate::core::models::{WorkItem, PullRequest, Pipeline, PipelineRun, Repository, MergeStrategy};
-use anyhow::{Result, anyhow};
-use reqwest::{Client, header};
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
+use reqwest::{header, Client};
 use serde_json::{json, Value};
 
 use crate::core::config::AdoConfig;
@@ -23,9 +25,7 @@ impl AzureDevOpsProvider {
         auth_value.set_sensitive(true);
         headers.insert(header::AUTHORIZATION, auth_value);
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()?;
+        let client = Client::builder().default_headers(headers).build()?;
 
         Ok(Self {
             client,
@@ -62,7 +62,11 @@ impl IssueTracker for AzureDevOpsProvider {
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to get work item {}: {}", id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to get work item {}: {}",
+                id,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -70,14 +74,27 @@ impl IssueTracker for AzureDevOpsProvider {
 
         Ok(WorkItem {
             id,
-            title: fields["System.Title"].as_str().unwrap_or_default().to_string(),
-            work_item_type: fields["System.WorkItemType"].as_str().unwrap_or_default().to_string(),
-            state: fields["System.State"].as_str().unwrap_or_default().to_string(),
+            title: fields["System.Title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            work_item_type: fields["System.WorkItemType"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            state: fields["System.State"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 
     async fn create_work_item(&self, title: &str, work_item_type: &str) -> Result<WorkItem> {
-        let url = self.v(&format!("{}/wit/workitems/${}", self.base_api_url(), work_item_type));
+        let url = self.v(&format!(
+            "{}/wit/workitems/${}",
+            self.base_api_url(),
+            work_item_type
+        ));
 
         let patch = json!([
             {
@@ -87,25 +104,41 @@ impl IssueTracker for AzureDevOpsProvider {
             }
         ]);
 
-        let resp = self.client.post(url)
+        let resp = self
+            .client
+            .post(url)
             .header(header::CONTENT_TYPE, "application/json-patch+json")
             .json(&patch)
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to create work item: {}", resp.text().await?));
+            return Err(anyhow!(
+                "Failed to create work item: {}",
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
-        let id = body["id"].as_i64().ok_or_else(|| anyhow!("No ID in response"))? as i32;
+        let id = body["id"]
+            .as_i64()
+            .ok_or_else(|| anyhow!("No ID in response"))? as i32;
         let fields = &body["fields"];
 
         Ok(WorkItem {
             id,
-            title: fields["System.Title"].as_str().unwrap_or_default().to_string(),
-            work_item_type: fields["System.WorkItemType"].as_str().unwrap_or_default().to_string(),
-            state: fields["System.State"].as_str().unwrap_or_default().to_string(),
+            title: fields["System.Title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            work_item_type: fields["System.WorkItemType"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            state: fields["System.State"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 
@@ -120,14 +153,20 @@ impl IssueTracker for AzureDevOpsProvider {
             }
         ]);
 
-        let resp = self.client.patch(url)
+        let resp = self
+            .client
+            .patch(url)
             .header(header::CONTENT_TYPE, "application/json-patch+json")
             .json(&patch)
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to update work item {}: {}", id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to update work item {}: {}",
+                id,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -135,9 +174,18 @@ impl IssueTracker for AzureDevOpsProvider {
 
         Ok(WorkItem {
             id,
-            title: fields["System.Title"].as_str().unwrap_or_default().to_string(),
-            work_item_type: fields["System.WorkItemType"].as_str().unwrap_or_default().to_string(),
-            state: fields["System.State"].as_str().unwrap_or_default().to_string(),
+            title: fields["System.Title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            work_item_type: fields["System.WorkItemType"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            state: fields["System.State"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 }
@@ -171,7 +219,11 @@ mod tests {
             }).to_string())
             .create_async().await;
 
-        let mock_delete_ref = server.mock("POST", "/test-project/_apis/git/repositories/my-repo/refs?api-version=7.1")
+        let mock_delete_ref = server
+            .mock(
+                "POST",
+                "/test-project/_apis/git/repositories/my-repo/refs?api-version=7.1",
+            )
             .match_body(mockito::Matcher::Json(json!([
                 {
                     "name": "refs/heads/to-delete",
@@ -180,37 +232,58 @@ mod tests {
                 }
             ])))
             .with_status(201)
-            .create_async().await;
+            .create_async()
+            .await;
 
-        provider.delete_branch("my-repo", "to-delete").await.unwrap();
+        provider
+            .delete_branch("my-repo", "to-delete")
+            .await
+            .unwrap();
 
         mock_get_ref.assert_async().await;
         mock_delete_ref.assert_async().await;
     }
 
-
     #[tokio::test]
     async fn test_update_pull_request() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("PATCH", "/test-project/_apis/git/repositories/my-repo/pullrequests/123?api-version=7.1")
+        let mock = server
+            .mock(
+                "PATCH",
+                "/test-project/_apis/git/repositories/my-repo/pullrequests/123?api-version=7.1",
+            )
             .match_body(mockito::Matcher::Json(json!({
                 "title": "New Title",
                 "isDraft": false,
                 "status": "active"
             })))
             .with_status(200)
-            .with_body(json!({
-                "pullRequestId": 123,
-                "title": "New Title",
-                "status": "active",
-                "sourceRefName": "refs/heads/feature",
-                "targetRefName": "refs/heads/main",
-                "isDraft": false
-            }).to_string())
-            .create_async().await;
+            .with_body(
+                json!({
+                    "pullRequestId": 123,
+                    "title": "New Title",
+                    "status": "active",
+                    "sourceRefName": "refs/heads/feature",
+                    "targetRefName": "refs/heads/main",
+                    "isDraft": false
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
-        let pr = provider.update_pull_request("my-repo", 123, Some("New Title"), None, Some(false), Some("active")).await.unwrap();
+        let pr = provider
+            .update_pull_request(
+                "my-repo",
+                123,
+                Some("New Title"),
+                None,
+                Some(false),
+                Some("active"),
+            )
+            .await
+            .unwrap();
         assert_eq!(pr.title, "New Title");
 
         mock.assert_async().await;
@@ -220,7 +293,11 @@ mod tests {
     async fn test_complete_pull_request() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("PATCH", "/test-project/_apis/git/repositories/my-repo/pullrequests/123?api-version=7.1")
+        let mock = server
+            .mock(
+                "PATCH",
+                "/test-project/_apis/git/repositories/my-repo/pullrequests/123?api-version=7.1",
+            )
             .match_body(mockito::Matcher::Json(json!({
                 "status": "completed",
                 "completionOptions": {
@@ -229,9 +306,13 @@ mod tests {
                 }
             })))
             .with_status(200)
-            .create_async().await;
+            .create_async()
+            .await;
 
-        provider.complete_pull_request("my-repo", 123, MergeStrategy::Squash, true).await.unwrap();
+        provider
+            .complete_pull_request("my-repo", 123, MergeStrategy::Squash, true)
+            .await
+            .unwrap();
 
         mock.assert_async().await;
     }
@@ -249,7 +330,10 @@ mod tests {
             .with_status(200)
             .create_async().await;
 
-        provider.add_reviewer("my-repo", 123, "user-id").await.unwrap();
+        provider
+            .add_reviewer("my-repo", 123, "user-id")
+            .await
+            .unwrap();
 
         mock.assert_async().await;
     }
@@ -258,18 +342,26 @@ mod tests {
     async fn test_get_work_item() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("GET", "/test-project/_apis/wit/workitems/123?api-version=7.1")
+        let mock = server
+            .mock(
+                "GET",
+                "/test-project/_apis/wit/workitems/123?api-version=7.1",
+            )
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(json!({
-                "id": 123,
-                "fields": {
-                    "System.Title": "Test Title",
-                    "System.WorkItemType": "User Story",
-                    "System.State": "New"
-                }
-            }).to_string())
-            .create_async().await;
+            .with_body(
+                json!({
+                    "id": 123,
+                    "fields": {
+                        "System.Title": "Test Title",
+                        "System.WorkItemType": "User Story",
+                        "System.State": "New"
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
         let result = provider.get_work_item(123).await.unwrap();
         assert_eq!(result.id, 123);
@@ -284,7 +376,11 @@ mod tests {
     async fn test_create_work_item() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("POST", "/test-project/_apis/wit/workitems/$User%20Story?api-version=7.1")
+        let mock = server
+            .mock(
+                "POST",
+                "/test-project/_apis/wit/workitems/$User%20Story?api-version=7.1",
+            )
             .match_header("content-type", "application/json-patch+json")
             .match_body(mockito::Matcher::Json(json!([
                 {
@@ -294,17 +390,24 @@ mod tests {
                 }
             ])))
             .with_status(201)
-            .with_body(json!({
-                "id": 456,
-                "fields": {
-                    "System.Title": "New Task",
-                    "System.WorkItemType": "User Story",
-                    "System.State": "New"
-                }
-            }).to_string())
-            .create_async().await;
+            .with_body(
+                json!({
+                    "id": 456,
+                    "fields": {
+                        "System.Title": "New Task",
+                        "System.WorkItemType": "User Story",
+                        "System.State": "New"
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
-        let result = provider.create_work_item("New Task", "User Story").await.unwrap();
+        let result = provider
+            .create_work_item("New Task", "User Story")
+            .await
+            .unwrap();
         assert_eq!(result.id, 456);
         assert_eq!(result.title, "New Task");
 
@@ -315,19 +418,30 @@ mod tests {
     async fn test_get_pull_request_details() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("GET", "/test-project/_apis/git/repositories/my-repo/pullrequests/789?api-version=7.1")
+        let mock = server
+            .mock(
+                "GET",
+                "/test-project/_apis/git/repositories/my-repo/pullrequests/789?api-version=7.1",
+            )
             .with_status(200)
-            .with_body(json!({
-                "pullRequestId": 789,
-                "title": "PR Title",
-                "status": "active",
-                "sourceRefName": "refs/heads/feature",
-                "targetRefName": "refs/heads/main",
-                "isDraft": false
-            }).to_string())
-            .create_async().await;
+            .with_body(
+                json!({
+                    "pullRequestId": 789,
+                    "title": "PR Title",
+                    "status": "active",
+                    "sourceRefName": "refs/heads/feature",
+                    "targetRefName": "refs/heads/main",
+                    "isDraft": false
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
-        let result = provider.get_pull_request_details("my-repo", 789).await.unwrap();
+        let result = provider
+            .get_pull_request_details("my-repo", 789)
+            .await
+            .unwrap();
         assert_eq!(result.id, 789);
         assert_eq!(result.title, "PR Title");
 
@@ -352,7 +466,10 @@ mod tests {
             }).to_string())
             .create_async().await;
 
-        let pr = provider.get_pull_request_by_branch("my-repo", "feature").await.unwrap();
+        let pr = provider
+            .get_pull_request_by_branch("my-repo", "feature")
+            .await
+            .unwrap();
         assert!(pr.is_some());
         assert_eq!(pr.unwrap().id, 123);
 
@@ -372,7 +489,11 @@ mod tests {
             }).to_string())
             .create_async().await;
 
-        let mock_create_ref = server.mock("POST", "/test-project/_apis/git/repositories/my-repo/refs?api-version=7.1")
+        let mock_create_ref = server
+            .mock(
+                "POST",
+                "/test-project/_apis/git/repositories/my-repo/refs?api-version=7.1",
+            )
             .match_body(mockito::Matcher::Json(json!([
                 {
                     "name": "refs/heads/new-branch",
@@ -381,9 +502,13 @@ mod tests {
                 }
             ])))
             .with_status(201)
-            .create_async().await;
+            .create_async()
+            .await;
 
-        provider.create_branch("my-repo", "new-branch", "main").await.unwrap();
+        provider
+            .create_branch("my-repo", "new-branch", "main")
+            .await
+            .unwrap();
 
         mock_get_ref.assert_async().await;
         mock_create_ref.assert_async().await;
@@ -393,15 +518,20 @@ mod tests {
     async fn test_list_pipelines() {
         let (mut server, provider) = setup_mock_server().await;
 
-        let mock = server.mock("GET", "/test-project/_apis/pipelines?api-version=7.1")
+        let mock = server
+            .mock("GET", "/test-project/_apis/pipelines?api-version=7.1")
             .with_status(200)
-            .with_body(json!({
-                "value": [
-                    { "id": 1, "name": "Pipe 1", "folder": "\\" },
-                    { "id": 2, "name": "Pipe 2", "folder": "\\nested" }
-                ]
-            }).to_string())
-            .create_async().await;
+            .with_body(
+                json!({
+                    "value": [
+                        { "id": 1, "name": "Pipe 1", "folder": "\\" },
+                        { "id": 2, "name": "Pipe 2", "folder": "\\nested" }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
 
         let result = provider.list_pipelines().await.unwrap();
         assert_eq!(result.len(), 2);
@@ -413,7 +543,11 @@ mod tests {
 
 #[async_trait]
 impl VCSProvider for AzureDevOpsProvider {
-    async fn get_pull_request_by_branch(&self, repository: &str, branch: &str) -> Result<Option<PullRequest>> {
+    async fn get_pull_request_by_branch(
+        &self,
+        repository: &str,
+        branch: &str,
+    ) -> Result<Option<PullRequest>> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests?searchCriteria.sourceRefName={}",
             self.base_api_url(),
@@ -427,7 +561,9 @@ impl VCSProvider for AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        let items = body["value"].as_array().ok_or_else(|| anyhow!("No value array in response"))?;
+        let items = body["value"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No value array in response"))?;
 
         if items.is_empty() {
             return Ok(None);
@@ -438,14 +574,25 @@ impl VCSProvider for AzureDevOpsProvider {
             id: item["pullRequestId"].as_i64().unwrap_or_default() as i32,
             title: item["title"].as_str().unwrap_or_default().to_string(),
             status: item["status"].as_str().unwrap_or_default().to_string(),
-            source_branch: item["sourceRefName"].as_str().unwrap_or_default().to_string(),
-            target_branch: item["targetRefName"].as_str().unwrap_or_default().to_string(),
+            source_branch: item["sourceRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            target_branch: item["targetRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             is_draft: item["isDraft"].as_bool().unwrap_or_default(),
         }))
     }
 
     async fn get_pull_request_details(&self, repository: &str, id: i32) -> Result<PullRequest> {
-        let url = self.v(&format!("{}/git/repositories/{}/pullrequests/{}", self.base_api_url(), repository, id));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}",
+            self.base_api_url(),
+            repository,
+            id
+        ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
@@ -458,8 +605,14 @@ impl VCSProvider for AzureDevOpsProvider {
             id,
             title: body["title"].as_str().unwrap_or_default().to_string(),
             status: body["status"].as_str().unwrap_or_default().to_string(),
-            source_branch: body["sourceRefName"].as_str().unwrap_or_default().to_string(),
-            target_branch: body["targetRefName"].as_str().unwrap_or_default().to_string(),
+            source_branch: body["sourceRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            target_branch: body["targetRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
         })
     }
@@ -473,7 +626,11 @@ impl VCSProvider for AzureDevOpsProvider {
         description: &str,
         is_draft: bool,
     ) -> Result<PullRequest> {
-        let url = self.v(&format!("{}/git/repositories/{}/pullrequests", self.base_api_url(), repository));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests",
+            self.base_api_url(),
+            repository
+        ));
 
         let body = json!({
             "sourceRefName": self.normalize_ref(source),
@@ -490,14 +647,22 @@ impl VCSProvider for AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        let id = body["pullRequestId"].as_i64().ok_or_else(|| anyhow!("No pullRequestId in response"))? as i32;
+        let id = body["pullRequestId"]
+            .as_i64()
+            .ok_or_else(|| anyhow!("No pullRequestId in response"))? as i32;
 
         Ok(PullRequest {
             id,
             title: body["title"].as_str().unwrap_or_default().to_string(),
             status: body["status"].as_str().unwrap_or_default().to_string(),
-            source_branch: body["sourceRefName"].as_str().unwrap_or_default().to_string(),
-            target_branch: body["targetRefName"].as_str().unwrap_or_default().to_string(),
+            source_branch: body["sourceRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            target_branch: body["targetRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
         })
     }
@@ -507,18 +672,32 @@ impl VCSProvider for AzureDevOpsProvider {
         let normalized_name = self.normalize_ref(name);
 
         // Get source branch objectId
-        let refs_url = self.v(&format!("{}/git/repositories/{}/refs?filter={}", self.base_api_url(), repository, normalized_source.trim_start_matches("refs/")));
+        let refs_url = self.v(&format!(
+            "{}/git/repositories/{}/refs?filter={}",
+            self.base_api_url(),
+            repository,
+            normalized_source.trim_start_matches("refs/")
+        ));
         let resp = self.client.get(refs_url).send().await?;
 
         if !resp.status().is_success() {
-             return Err(anyhow!("Failed to find source branch {}: {}", source, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to find source branch {}: {}",
+                source,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
-        let source_sha = body["value"][0]["objectId"].as_str()
+        let source_sha = body["value"][0]["objectId"]
+            .as_str()
             .ok_or_else(|| anyhow!("Could not find objectId for source branch {}", source))?;
 
-        let create_url = self.v(&format!("{}/git/repositories/{}/refs", self.base_api_url(), repository));
+        let create_url = self.v(&format!(
+            "{}/git/repositories/{}/refs",
+            self.base_api_url(),
+            repository
+        ));
         let body = json!([
             {
                 "name": normalized_name,
@@ -530,18 +709,30 @@ impl VCSProvider for AzureDevOpsProvider {
         let resp = self.client.post(create_url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to create branch {}: {}", name, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to create branch {}: {}",
+                name,
+                resp.text().await?
+            ));
         }
 
         Ok(())
     }
 
     async fn get_repository(&self, name: &str) -> Result<Repository> {
-        let url = self.v(&format!("{}/git/repositories/{}", self.base_api_url(), name));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}",
+            self.base_api_url(),
+            name
+        ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to get repository {}: {}", name, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to get repository {}: {}",
+                name,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -549,7 +740,10 @@ impl VCSProvider for AzureDevOpsProvider {
         Ok(Repository {
             id: body["id"].as_str().unwrap_or_default().to_string(),
             name: body["name"].as_str().unwrap_or_default().to_string(),
-            project_id: body["project"]["id"].as_str().unwrap_or_default().to_string(),
+            project_id: body["project"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             default_branch: body["defaultBranch"].as_str().map(|s| s.to_string()),
         })
     }
@@ -558,18 +752,32 @@ impl VCSProvider for AzureDevOpsProvider {
         let normalized_name = self.normalize_ref(name);
 
         // Get current branch objectId
-        let refs_url = self.v(&format!("{}/git/repositories/{}/refs?filter={}", self.base_api_url(), repository, normalized_name.trim_start_matches("refs/")));
+        let refs_url = self.v(&format!(
+            "{}/git/repositories/{}/refs?filter={}",
+            self.base_api_url(),
+            repository,
+            normalized_name.trim_start_matches("refs/")
+        ));
         let resp = self.client.get(refs_url).send().await?;
 
         if !resp.status().is_success() {
-             return Err(anyhow!("Failed to find branch {}: {}", name, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to find branch {}: {}",
+                name,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
-        let current_sha = body["value"][0]["objectId"].as_str()
+        let current_sha = body["value"][0]["objectId"]
+            .as_str()
             .ok_or_else(|| anyhow!("Could not find objectId for branch {}", name))?;
 
-        let update_url = self.v(&format!("{}/git/repositories/{}/refs", self.base_api_url(), repository));
+        let update_url = self.v(&format!(
+            "{}/git/repositories/{}/refs",
+            self.base_api_url(),
+            repository
+        ));
         let body = json!([
             {
                 "name": normalized_name,
@@ -581,7 +789,11 @@ impl VCSProvider for AzureDevOpsProvider {
         let resp = self.client.post(update_url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to delete branch {}: {}", name, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to delete branch {}: {}",
+                name,
+                resp.text().await?
+            ));
         }
 
         Ok(())
@@ -596,7 +808,12 @@ impl VCSProvider for AzureDevOpsProvider {
         is_draft: Option<bool>,
         status: Option<&str>,
     ) -> Result<PullRequest> {
-        let url = self.v(&format!("{}/git/repositories/{}/pullrequests/{}", self.base_api_url(), repository, id));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}",
+            self.base_api_url(),
+            repository,
+            id
+        ));
 
         let mut body = json!({});
         if let Some(t) = title {
@@ -615,7 +832,11 @@ impl VCSProvider for AzureDevOpsProvider {
         let resp = self.client.patch(url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to update PR {}: {}", id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to update PR {}: {}",
+                id,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -624,8 +845,14 @@ impl VCSProvider for AzureDevOpsProvider {
             id,
             title: body["title"].as_str().unwrap_or_default().to_string(),
             status: body["status"].as_str().unwrap_or_default().to_string(),
-            source_branch: body["sourceRefName"].as_str().unwrap_or_default().to_string(),
-            target_branch: body["targetRefName"].as_str().unwrap_or_default().to_string(),
+            source_branch: body["sourceRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            target_branch: body["targetRefName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
         })
     }
@@ -637,7 +864,12 @@ impl VCSProvider for AzureDevOpsProvider {
         strategy: MergeStrategy,
         delete_source_branch: bool,
     ) -> Result<()> {
-        let url = self.v(&format!("{}/git/repositories/{}/pullrequests/{}", self.base_api_url(), repository, id));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}",
+            self.base_api_url(),
+            repository,
+            id
+        ));
 
         let body = json!({
             "status": "completed",
@@ -650,14 +882,24 @@ impl VCSProvider for AzureDevOpsProvider {
         let resp = self.client.patch(url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to complete PR {}: {}", id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to complete PR {}: {}",
+                id,
+                resp.text().await?
+            ));
         }
 
         Ok(())
     }
 
     async fn add_reviewer(&self, repository: &str, id: i32, reviewer_id: &str) -> Result<()> {
-        let url = self.v(&format!("{}/git/repositories/{}/pullrequests/{}/reviewers/{}", self.base_api_url(), repository, id, reviewer_id));
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/reviewers/{}",
+            self.base_api_url(),
+            repository,
+            id,
+            reviewer_id
+        ));
 
         let body = json!({
             "vote": 0,
@@ -668,7 +910,12 @@ impl VCSProvider for AzureDevOpsProvider {
         let resp = self.client.put(url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to add reviewer {} to PR {}: {}", reviewer_id, id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to add reviewer {} to PR {}: {}",
+                reviewer_id,
+                id,
+                resp.text().await?
+            ));
         }
 
         Ok(())
@@ -686,7 +933,9 @@ impl PipelineProvider for AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        let items = body["value"].as_array().ok_or_else(|| anyhow!("No value array in response"))?;
+        let items = body["value"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No value array in response"))?;
 
         let mut pipelines = Vec::new();
         for item in items {
@@ -701,7 +950,11 @@ impl PipelineProvider for AzureDevOpsProvider {
     }
 
     async fn run_pipeline(&self, pipeline_id: i32, branch: &str) -> Result<PipelineRun> {
-        let url = self.v(&format!("{}/pipelines/{}/runs", self.base_api_url(), pipeline_id));
+        let url = self.v(&format!(
+            "{}/pipelines/{}/runs",
+            self.base_api_url(),
+            pipeline_id
+        ));
 
         let body = json!({
             "resources": {
@@ -716,7 +969,11 @@ impl PipelineProvider for AzureDevOpsProvider {
         let resp = self.client.post(url).json(&body).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to run pipeline {}: {}", pipeline_id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to run pipeline {}: {}",
+                pipeline_id,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -725,16 +982,29 @@ impl PipelineProvider for AzureDevOpsProvider {
             id: body["id"].as_i64().unwrap_or_default() as i32,
             status: body["state"].as_str().unwrap_or_default().to_string(),
             result: body["result"].as_str().map(|s| s.to_string()),
-            url: body["_links"]["web"]["href"].as_str().unwrap_or_default().to_string(),
+            url: body["_links"]["web"]["href"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 
     async fn get_pipeline_run(&self, pipeline_id: i32, run_id: i32) -> Result<PipelineRun> {
-        let url = self.v(&format!("{}/pipelines/{}/runs/{}", self.base_api_url(), pipeline_id, run_id));
+        let url = self.v(&format!(
+            "{}/pipelines/{}/runs/{}",
+            self.base_api_url(),
+            pipeline_id,
+            run_id
+        ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Failed to get pipeline run {}/{}: {}", pipeline_id, run_id, resp.text().await?));
+            return Err(anyhow!(
+                "Failed to get pipeline run {}/{}: {}",
+                pipeline_id,
+                run_id,
+                resp.text().await?
+            ));
         }
 
         let body: Value = resp.json().await?;
@@ -743,7 +1013,10 @@ impl PipelineProvider for AzureDevOpsProvider {
             id: body["id"].as_i64().unwrap_or_default() as i32,
             status: body["state"].as_str().unwrap_or_default().to_string(),
             result: body["result"].as_str().map(|s| s.to_string()),
-            url: body["_links"]["web"]["href"].as_str().unwrap_or_default().to_string(),
+            url: body["_links"]["web"]["href"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 }

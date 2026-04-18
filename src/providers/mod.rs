@@ -1,6 +1,8 @@
-use async_trait::async_trait;
-use crate::core::models::{WorkItem, PullRequest, Pipeline, PipelineRun, Repository, MergeStrategy};
+use crate::core::models::{
+    MergeStrategy, Pipeline, PipelineRun, PullRequest, Repository, WorkItem,
+};
 use anyhow::Result;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait IssueTracker {
@@ -11,7 +13,11 @@ pub trait IssueTracker {
 
 #[async_trait]
 pub trait VCSProvider {
-    async fn get_pull_request_by_branch(&self, repository: &str, branch: &str) -> Result<Option<PullRequest>>;
+    async fn get_pull_request_by_branch(
+        &self,
+        repository: &str,
+        branch: &str,
+    ) -> Result<Option<PullRequest>>;
     async fn get_pull_request_details(&self, repository: &str, id: i32) -> Result<PullRequest>;
     async fn create_pull_request(
         &self,

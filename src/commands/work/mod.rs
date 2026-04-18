@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     title: String,
     _description: Option<String>,
@@ -59,6 +60,9 @@ pub async fn list(mine: bool, state: String, type_name: String, _max: i32) -> an
     // 1. Build WIQL query based on --mine, --state, --type_name.
     // 2. Call IssueTracker::query_work_items(wiql).
     // 3. Format results as table.
-    println!("Scaffold: fm work list --mine {} --state {} --type {}", mine, state, type_name);
+    println!(
+        "Scaffold: fm work list --mine {} --state {} --type {}",
+        mine, state, type_name
+    );
     Ok(())
 }

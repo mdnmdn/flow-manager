@@ -14,7 +14,10 @@ pub async fn hold(stash: bool, force: bool, stay: bool) -> anyhow::Result<()> {
     //    - Else: error "working tree dirty".
     // 3. git push.
     // 4. git checkout baseline.
-    println!("Scaffold: fm task hold --stash {} --force {} --stay {}", stash, force, stay);
+    println!(
+        "Scaffold: fm task hold --stash {} --force {} --stay {}",
+        stash, force, stay
+    );
     Ok(())
 }
 
@@ -62,6 +65,9 @@ pub async fn sync(rebase: bool, check: bool) -> anyhow::Result<()> {
     // 3. Perform merge or rebase.
     // 4. If conflict, print instructions and exit non-zero.
     // 5. git push.
-    println!("Scaffold: fm task sync --rebase {} --check {}", rebase, check);
+    println!(
+        "Scaffold: fm task sync --rebase {} --check {}",
+        rebase, check
+    );
     Ok(())
 }
