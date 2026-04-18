@@ -3,10 +3,9 @@ use crate::core::context::{Context, ContextManager, OutputFormatter};
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::sonar::SonarProvider;
-use crate::providers::{IssueTracker, PipelineProvider, QualityProvider, VCSProvider};
+use crate::providers::{IssueTracker, QualityProvider, VCSProvider};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
-use tokio::join;
 
 #[derive(Serialize)]
 struct WorkNewResult {
@@ -117,7 +116,7 @@ pub async fn run(
     Ok(())
 }
 
-pub async fn load(id: String, target: Option<String>) -> Result<()> {
+pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     let config = Config::load()?;
     let ado = AzureDevOpsProvider::new(&config.ado)?;
     let git = LocalGitProvider;

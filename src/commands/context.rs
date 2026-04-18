@@ -1,21 +1,10 @@
 use crate::core::config::Config;
-use crate::core::context::{Context, ContextManager, OutputFormatter};
+use crate::core::context::{Context, ContextManager};
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
 use anyhow::Result;
-use serde::Serialize;
 use tokio::join;
-
-#[derive(Serialize)]
-struct ContextResult {
-    branch: String,
-    context_type: String,
-    work_item: Option<crate::core::models::WorkItem>,
-    pull_request: Option<crate::core::models::PullRequest>,
-    pipeline_run: Option<crate::core::models::PipelineRun>,
-    git_status: String,
-}
 
 pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bool) -> Result<()> {
     let config = Config::load()?;

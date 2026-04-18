@@ -1,8 +1,5 @@
-use crate::core::config::Config;
-use crate::core::models::{PullRequest, WorkItem};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::Serialize;
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize)]
 pub enum Context {

@@ -35,7 +35,7 @@ pub async fn status(run_id: Option<i32>, watch: bool) -> Result<()> {
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
-    let mut id = match run_id {
+    let id = match run_id {
         Some(i) => i,
         None => {
             let latest = ado.get_latest_run(&branch).await?;

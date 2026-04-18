@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::context::{Context, ContextManager, OutputFormatter};
+use crate::core::context::{Context, ContextManager};
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::{IssueTracker, VCSProvider};
@@ -16,7 +16,7 @@ pub async fn hold(stash: bool, force: bool, stay: bool) -> Result<()> {
             return Ok(());
         }
         Context::Activity { wi_id, branch, .. } => {
-            let slug = branch.split('/').last().unwrap_or("activity");
+            let slug = branch.split('/').next_back().unwrap_or("activity");
             (wi_id, slug.to_string())
         }
     };

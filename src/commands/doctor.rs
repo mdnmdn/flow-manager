@@ -2,7 +2,7 @@ use crate::core::config::Config;
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::sonar::SonarProvider;
-use crate::providers::{IssueTracker, PipelineProvider, QualityProvider, VCSProvider};
+use crate::providers::{IssueTracker, VCSProvider};
 use anyhow::Result;
 use std::process::Command;
 

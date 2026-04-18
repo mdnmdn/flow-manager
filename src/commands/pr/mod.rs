@@ -14,10 +14,7 @@ pub async fn show(id: Option<String>) -> Result<()> {
     let pr_id = if let Some(id_str) = id {
         match ContextManager::resolve_id(&id_str) {
             IdResolution::PullRequest(id) => id,
-            IdResolution::WorkItem(wi_id) => {
-                let pr = ado
-                    .get_pull_request_by_branch(&config.ado.project, &id_str)
-                    .await?; // This is wrong, should find by WI
+            IdResolution::WorkItem(_wi_id) => {
                              // Actually IssueTracker doesn't have "get PR for WI".
                              // We usually derive it from the branch if we have the branch name.
                              // For now, let's assume we can only easily find PR by branch or ID.
