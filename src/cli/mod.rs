@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version = option_env!("FM_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")), about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {
     #[command(subcommand)]
@@ -127,6 +127,8 @@ pub enum Commands {
     /// Low-level plumbing commands
     #[command(subcommand)]
     Plumbing(PlumbingCommands),
+    /// Show the current version
+    Version,
 }
 
 #[derive(Subcommand)]
