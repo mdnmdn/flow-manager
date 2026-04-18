@@ -21,11 +21,11 @@ The VCS provider handles local and remote repository operations.
     - [x] `add_reviewer(id, email)`: Add a reviewer to a PR.
 - **Git Operations**:
     - [x] `get_status()`: Check for uncommitted changes and ahead/behind counts.
-    - [ ] `get_log(range, limit)`: Fetch commit history. (Deferred)
+    - [x] `get_log(range, limit)`: Fetch commit history.
     - [x] `stash_push(message)`: Stash uncommitted changes.
     - [x] `stash_pop()`: Restore a stash matching a criteria.
-    - [ ] `merge(source)`: Merge a branch into current. (Deferred)
-    - [ ] `rebase(target)`: Rebase current branch onto target. (Deferred)
+    - [x] `merge(source)`: Merge a branch into current.
+    - [x] `rebase(target)`: Rebase current branch onto target.
     - [x] `push(force_with_lease)`: Push commits to remote.
     - [x] `pull()`: Update current branch from remote.
     - [x] `commit(message, all)`: Create a commit locally.

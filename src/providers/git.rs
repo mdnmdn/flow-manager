@@ -116,12 +116,50 @@ impl VCSProvider for LocalGitProvider {
         Ok(())
     }
 
-    async fn commit(&self, message: &str, all: bool) -> Result<()> {
+    async fn fetch(&self) -> Result<()> {
+        self.run_git(&["fetch", "origin"])?;
+        Ok(())
+    }
+
+    async fn commit(&self, message: &str, all: bool, amend: bool) -> Result<()> {
         let mut args = vec!["commit", "-m", message];
         if all {
             args.push("-a");
         }
+        if amend {
+            args.push("--amend");
+            args.push("--no-edit");
+        }
         self.run_git(&args)?;
+        Ok(())
+    }
+
+    async fn discard_local_changes(&self) -> Result<()> {
+        self.run_git(&["checkout", "--", "."])?;
+        Ok(())
+    }
+
+    async fn get_log(&self, range: Option<&str>, limit: Option<i32>) -> Result<String> {
+        let mut args = vec!["log", "--oneline"];
+        let limit_str;
+        if let Some(l) = limit {
+            limit_str = l.to_string();
+            args.push("-n");
+            args.push(&limit_str);
+        }
+        if let Some(r) = range {
+            args.push(r);
+        }
+        self.run_git(&args)
+    }
+
+    async fn merge(&self, source: &str) -> Result<()> {
+        self.run_git(&["merge", source])?;
+        Ok(())
+    }
+
+    async fn rebase(&self, target: &str) -> Result<()> {
+        self.run_git(&["rebase", target])?;
         Ok(())
     }
 

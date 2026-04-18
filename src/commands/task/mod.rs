@@ -27,7 +27,7 @@ pub async fn hold(stash: bool, force: bool, stay: bool) -> Result<()> {
             let stash_msg = format!("stash-{}-{}", wi_id, slug);
             git.stash_push(&stash_msg).await?;
         } else if force {
-            git.run_git(&["checkout", "--", "."])?;
+            git.discard_local_changes().await?;
         } else {
             println!(
                 "Uncommitted changes present. Use `--stash` to save them or `--force` to discard."
@@ -138,20 +138,24 @@ pub async fn sync(rebase: bool, check: bool) -> Result<()> {
         return Err(anyhow!("Already on baseline — nothing to sync."));
     }
 
-    git.run_git(&["fetch", "origin"])?;
+    git.fetch().await?;
     let target = format!("origin/{}", config.fm.default_target);
 
     if check {
-        let ahead = git.run_git(&["log", "--oneline", &format!("{}..HEAD", target)])?;
-        let behind = git.run_git(&["log", "--oneline", &format!("HEAD..{}", target)])?;
+        let ahead = git
+            .get_log(Some(&format!("{}..HEAD", target)), None)
+            .await?;
+        let behind = git
+            .get_log(Some(&format!("HEAD..{}", target)), None)
+            .await?;
         println!("## Sync Check\n\nAhead:\n{}\n\nBehind:\n{}", ahead, behind);
         return Ok(());
     }
 
     if rebase {
-        git.run_git(&["rebase", &target])?;
+        git.rebase(&target).await?;
     } else {
-        git.run_git(&["merge", &target])?;
+        git.merge(&target).await?;
     }
 
     git.push(false).await?;

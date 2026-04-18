@@ -83,7 +83,12 @@ pub trait VCSProvider {
     async fn stash_pop(&self) -> Result<()>;
     async fn push(&self, force: bool) -> Result<()>;
     async fn pull(&self) -> Result<()>;
-    async fn commit(&self, message: &str, all: bool) -> Result<()>;
+    async fn fetch(&self) -> Result<()>;
+    async fn commit(&self, message: &str, all: bool, amend: bool) -> Result<()>;
+    async fn discard_local_changes(&self) -> Result<()>;
+    async fn get_log(&self, range: Option<&str>, limit: Option<i32>) -> Result<String>;
+    async fn merge(&self, source: &str) -> Result<()>;
+    async fn rebase(&self, target: &str) -> Result<()>;
 
     // Submodule Support
     async fn check_submodule_status(&self, path: &str) -> Result<bool>; // returns true if ahead/changed

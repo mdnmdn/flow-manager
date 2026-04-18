@@ -74,6 +74,18 @@ pub enum IdResolution {
     Unknown(String),
 }
 
+impl ContextManager {
+    pub fn derive_branch_name(wi_id: i32, title: &str, wi_type: &str) -> String {
+        let slug = title.to_lowercase().replace(' ', "-");
+        let prefix = if wi_type == "Bug" || wi_type == "fix" {
+            "fix"
+        } else {
+            "feature"
+        };
+        format!("{}/{}-{}", prefix, wi_id, slug)
+    }
+}
+
 pub struct OutputFormatter;
 
 impl OutputFormatter {

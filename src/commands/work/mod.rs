@@ -71,8 +71,11 @@ pub async fn run(
     }
 
     // 3. Derive branch name
-    let slug = branch_slug.unwrap_or_else(|| title.to_lowercase().replace(' ', "-"));
-    let branch_name = format!("{}/{}-{}", type_name, wi.id, slug);
+    let branch_name = if let Some(slug) = branch_slug {
+        format!("{}/{}-{}", type_name, wi.id, slug)
+    } else {
+        ContextManager::derive_branch_name(wi.id, &wi.title, &type_name)
+    };
 
     // 4. Create remote branch
     ado.create_branch(&config.ado.project, &branch_name, &target_branch)
@@ -94,7 +97,7 @@ pub async fn run(
     ado.update_work_item_state(wi.id, "Active").await?;
 
     // 7. Local checkout
-    git.run_git(&["fetch", "origin"])?;
+    git.fetch().await?;
     git.checkout_branch(&branch_name).await?;
 
     let result = WorkNewResult {
@@ -136,23 +139,14 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
 
     let branch_name = match ContextManager::detect(&id) {
         Context::Activity { branch, .. } => branch,
-        _ => {
-            // Derive from WI
-            let slug = wi.title.to_lowercase().replace(' ', "-");
-            let prefix = if wi.work_item_type == "Bug" {
-                "fix"
-            } else {
-                "feature"
-            };
-            format!("{}/{}-{}", prefix, wi.id, slug)
-        }
+        _ => ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type),
     };
 
     // Check if branch exists, if not error out (as per user instructions to use doctor --fix)
     // Actually, user said "abort on most command, leave only some 'main' command to fix"
     // So here I should check if I can checkout.
 
-    git.run_git(&["fetch", "origin"])?;
+    git.fetch().await?;
     if let Err(e) = git.checkout_branch(&branch_name).await {
         return Err(anyhow!("Branch `{}` not found locally or remotely. Run `fm doctor --fix` if you believe this is an error.\nError: {}", branch_name, e));
     }

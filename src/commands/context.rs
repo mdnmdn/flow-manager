@@ -16,7 +16,7 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
     match context {
         Context::Baseline { branch } => {
             println!("## Context — `{}` (baseline)", branch);
-            let log = git.run_git(&["log", "--oneline", "-n", "5"])?;
+            let log = git.get_log(None, Some(5)).await?;
             println!("\nLast commits:\n{}", log);
         }
         Context::Activity { branch, wi_id, .. } => {
@@ -24,14 +24,27 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
             let wi_fut = ado.get_work_item(wi_id);
             let pr_fut = ado.get_pull_request_by_branch(&config.ado.project, &branch);
             let git_status_fut = git.get_status();
+            let target = format!("origin/{}", config.fm.default_target);
+            let ahead_range = format!("{}..HEAD", target);
+            let behind_range = format!("HEAD..{}", target);
+            let log_ahead_fut = git.get_log(Some(&ahead_range), None);
+            let log_behind_fut = git.get_log(Some(&behind_range), None);
             let pipeline_fut = ado.get_latest_run(&branch);
 
-            let (wi_res, pr_res, git_res, pipe_res) =
-                join!(wi_fut, pr_fut, git_status_fut, pipeline_fut);
+            let (wi_res, pr_res, git_res, ahead_res, behind_res, pipe_res) = join!(
+                wi_fut,
+                pr_fut,
+                git_status_fut,
+                log_ahead_fut,
+                log_behind_fut,
+                pipeline_fut
+            );
 
             let wi = wi_res.ok();
             let pr = pr_res.unwrap_or(None);
             let git_status = git_res.unwrap_or_default();
+            let ahead = ahead_res.unwrap_or_default();
+            let behind = behind_res.unwrap_or_default();
             let pipe = pipe_res.unwrap_or(None);
 
             if only_wi {
@@ -67,6 +80,9 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
                         &git_status
                     }
                 );
+                let ahead_count = ahead.lines().count();
+                let behind_count = behind.lines().count();
+                println!("- Ahead: {}, Behind: {}", ahead_count, behind_count);
                 if let Some(p) = &pipe {
                     println!(
                         "\n### CI Pipeline\n- #{}: {} ({:?})",

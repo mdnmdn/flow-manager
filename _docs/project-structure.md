@@ -15,10 +15,14 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 │   │   ├── mod.rs
 │   │   ├── porcelain.rs # User-facing command definitions
 │   │   └── plumbing.rs  # Low-level command definitions
-│   ├── commands/        # Command implementations
+│   ├── commands/        # Command implementations organized by root command
 │   │   ├── mod.rs
-│   │   ├── porcelain/   # Logic for high-level workflows (e.g., fm work new)
-│   │   └── plumbing/    # Logic for low-level operations (e.g., git/ado primitives)
+│   │   ├── work/        # fm work ...
+│   │   ├── task/        # fm task ...
+│   │   ├── pr/          # fm pr ...
+│   │   ├── todo/        # fm todo ...
+│   │   ├── pipeline/    # fm pipeline ...
+│   │   └── plumbing/    # low-level primitives
 │   ├── core/            # Core business logic and shared models
 │   │   ├── mod.rs
 │   │   ├── context.rs   # Workspace/Activity context management
@@ -44,8 +48,8 @@ Uses `clap` to define the command-line interface.
 - **Plumbing Commands:** Low-level commands that expose raw provider capabilities. Useful for debugging or scripts.
 
 ### 2. Command Layer (`src/commands/`)
-Implements the logic for each CLI command.
-- Porcelain commands often orchestrate multiple plumbing commands or provider calls.
+Implements the logic for each CLI command, organized into subdirectories matching the main command groups.
+- High-level commands orchestrate multiple provider calls.
 - Ensures idempotency as described in the proposal.
 
 ### 3. Core Layer (`src/core/`)
