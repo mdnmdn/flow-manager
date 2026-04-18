@@ -49,24 +49,24 @@ The Issue Tracker manages work items and their relationships.
     - [x] `link_work_items(source_id, target_id, relation)`: Create a parent/child or other relationship.
     - [x] `get_child_work_items(id, type)`: List children of a specific WI (e.g., todos of a story).
 
-## 3. Pipeline Provider (Azure DevOps Pipelines)
+## 3. Pipeline Provider (Azure DevOps Pipelines) [COMPLETED]
 
 The Pipeline Provider handles CI/CD interactions.
 
 ### Features
 - **Run Management**:
-    - `run_pipeline(definition_id, branch)`: Trigger a new run.
-    - `get_latest_run(branch)`: Fetch the most recent run for a branch.
-    - `get_run_status(run_id)`: Get detailed status/results of a specific run.
+    - [x] `run_pipeline(definition_id, branch)`: Trigger a new run.
+    - [x] `get_latest_run(branch)`: Fetch the most recent run for a branch.
+    - [x] `get_run_status(run_id)`: Get detailed status/results of a specific run.
 - **Discovery**:
-    - `list_pipelines()`: List available pipeline definitions for auto-detection.
+    - [x] `list_pipelines()`: List available pipeline definitions for auto-detection.
 
-## 4. Quality Provider (SonarQube)
+## 4. Quality Provider (SonarQube) [COMPLETED]
 
 Handles integration with code quality tools.
 
 ### Features
-- `get_open_issues(project_key, severity)`: Fetch a list of open issues for a project.
+- [x] `get_open_issues(project_key, severity)`: Fetch a list of open issues for a project.
 
 ## 5. Internal Logic / Coordination
 
