@@ -142,8 +142,12 @@ pub async fn sync(rebase: bool, check: bool) -> Result<()> {
     let target = format!("origin/{}", config.fm.default_target);
 
     if check {
-        let ahead = git.get_log(Some(&format!("{}..HEAD", target)), None).await?;
-        let behind = git.get_log(Some(&format!("HEAD..{}", target)), None).await?;
+        let ahead = git
+            .get_log(Some(&format!("{}..HEAD", target)), None)
+            .await?;
+        let behind = git
+            .get_log(Some(&format!("HEAD..{}", target)), None)
+            .await?;
         println!("## Sync Check\n\nAhead:\n{}\n\nBehind:\n{}", ahead, behind);
         return Ok(());
     }

@@ -31,8 +31,14 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
             let log_behind_fut = git.get_log(Some(&behind_range), None);
             let pipeline_fut = ado.get_latest_run(&branch);
 
-            let (wi_res, pr_res, git_res, ahead_res, behind_res, pipe_res) =
-                join!(wi_fut, pr_fut, git_status_fut, log_ahead_fut, log_behind_fut, pipeline_fut);
+            let (wi_res, pr_res, git_res, ahead_res, behind_res, pipe_res) = join!(
+                wi_fut,
+                pr_fut,
+                git_status_fut,
+                log_ahead_fut,
+                log_behind_fut,
+                pipeline_fut
+            );
 
             let wi = wi_res.ok();
             let pr = pr_res.unwrap_or(None);

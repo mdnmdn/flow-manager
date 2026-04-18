@@ -17,7 +17,8 @@ pub async fn show(id: Option<String>) -> Result<()> {
             IdResolution::WorkItem(wi_id) => {
                 let wi = ado.get_work_item(wi_id).await?;
                 // Derive branch name as fm does
-                let branch_name = ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
+                let branch_name =
+                    ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
                 let pr = ado
                     .get_pull_request_by_branch(&config.ado.project, &branch_name)
                     .await?;
@@ -39,7 +40,8 @@ pub async fn show(id: Option<String>) -> Result<()> {
                 } else {
                     // Try as WI
                     let wi = ado.get_work_item(id).await?;
-                    let branch_name = ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
+                    let branch_name =
+                        ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
                     let pr = ado
                         .get_pull_request_by_branch(&config.ado.project, &branch_name)
                         .await?;

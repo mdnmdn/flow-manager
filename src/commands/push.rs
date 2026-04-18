@@ -17,8 +17,12 @@ pub async fn run(force: bool, no_docs: bool) -> Result<()> {
                     "Submodule `{}` has pending pointer update. Committing it...",
                     sub
                 );
-                git.commit(&format!("chore: update {} submodule pointer", sub), false, false)
-                    .await?;
+                git.commit(
+                    &format!("chore: update {} submodule pointer", sub),
+                    false,
+                    false,
+                )
+                .await?;
             }
         }
     }
