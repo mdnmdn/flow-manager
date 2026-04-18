@@ -55,22 +55,22 @@ impl AzureDevOpsProvider {
     }
 }
 
-#[async_trait]
-impl IssueTracker for AzureDevOpsProvider {
-    async fn get_work_item(&self, id: i32) -> Result<WorkItem> {
-        let url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), id));
-        let resp = self.client.get(url).send().await?;
-
-        if !resp.status().is_success() {
-            return Err(anyhow!(
-                "Failed to get work item {}: {}",
-                id,
-                resp.text().await?
-            ));
-        }
-
-        let body: Value = resp.json().await?;
+impl AzureDevOpsProvider {
+    fn parse_work_item(&self, body: &Value) -> Result<WorkItem> {
         let fields = &body["fields"];
+        let id = body["id"]
+            .as_i64()
+            .ok_or_else(|| anyhow!("No ID in work item: {:?}", body))? as i32;
+
+        let tags = fields["System.Tags"]
+            .as_str()
+            .map(|s| {
+                s.split(';')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
 
         Ok(WorkItem {
             id,
@@ -86,23 +86,127 @@ impl IssueTracker for AzureDevOpsProvider {
                 .as_str()
                 .unwrap_or_default()
                 .to_string(),
+            description: fields["System.Description"]
+                .as_str()
+                .or_else(|| fields["Microsoft.VSTS.TCM.ReproductionSteps"].as_str())
+                .map(|s| s.to_string()),
+            assigned_to: fields["System.AssignedTo"]["displayName"]
+                .as_str()
+                .or_else(|| fields["System.AssignedTo"]["uniqueName"].as_str())
+                .or_else(|| fields["System.AssignedTo"].as_str())
+                .map(|s| s.to_string()),
+            tags,
         })
     }
 
-    async fn create_work_item(&self, title: &str, work_item_type: &str) -> Result<WorkItem> {
+    async fn get_work_items_batch(&self, ids: Vec<i32>) -> Result<Vec<WorkItem>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let url = self.v(&format!("{}/wit/workitemsbatch", self.base_api_url()));
+        let body = json!({
+            "ids": ids,
+            "fields": [
+                "System.Id",
+                "System.Title",
+                "System.WorkItemType",
+                "System.State",
+                "System.Description",
+                "Microsoft.VSTS.TCM.ReproductionSteps",
+                "System.AssignedTo",
+                "System.Tags"
+            ]
+        });
+
+        let resp = self.client.post(url).json(&body).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch work items details: {}",
+                resp.text().await?
+            ));
+        }
+
+        let body: Value = resp.json().await?;
+        let items = body["value"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No value array in batch response"))?;
+
+        let mut results = Vec::new();
+        for item in items {
+            results.push(self.parse_work_item(item)?);
+        }
+
+        Ok(results)
+    }
+}
+
+#[async_trait]
+impl IssueTracker for AzureDevOpsProvider {
+    async fn get_work_item(&self, id: i32) -> Result<WorkItem> {
+        let url = self.v(&format!(
+            "{}/wit/workitems/{}?$expand=fields",
+            self.base_api_url(),
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to get work item {}: {}",
+                id,
+                resp.text().await?
+            ));
+        }
+
+        let body: Value = resp.json().await?;
+        self.parse_work_item(&body)
+    }
+
+    async fn create_work_item(
+        &self,
+        title: &str,
+        work_item_type: &str,
+        description: Option<&str>,
+        assigned_to: Option<&str>,
+        tags: Option<Vec<&str>>,
+    ) -> Result<WorkItem> {
         let url = self.v(&format!(
             "{}/wit/workitems/${}",
             self.base_api_url(),
             work_item_type
         ));
 
-        let patch = json!([
-            {
+        let mut patch = vec![json!({
+            "op": "add",
+            "path": "/fields/System.Title",
+            "value": title
+        })];
+
+        if let Some(desc) = description {
+            patch.push(json!({
                 "op": "add",
-                "path": "/fields/System.Title",
-                "value": title
-            }
-        ]);
+                "path": "/fields/System.Description",
+                "value": desc
+            }));
+        }
+
+        if let Some(assignee) = assigned_to {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.AssignedTo",
+                "value": assignee
+            }));
+        }
+
+        if let Some(t) = tags {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.Tags",
+                "value": t.join(";")
+            }));
+        }
 
         let resp = self
             .client
@@ -120,29 +224,78 @@ impl IssueTracker for AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        let id = body["id"]
-            .as_i64()
-            .ok_or_else(|| anyhow!("No ID in response"))? as i32;
-        let fields = &body["fields"];
-
-        Ok(WorkItem {
-            id,
-            title: fields["System.Title"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            work_item_type: fields["System.WorkItemType"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            state: fields["System.State"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-        })
+        self.parse_work_item(&body)
     }
 
-    async fn update_work_item(&self, id: i32, state: &str) -> Result<WorkItem> {
+    async fn update_work_item(
+        &self,
+        id: i32,
+        title: Option<&str>,
+        description: Option<&str>,
+        assigned_to: Option<&str>,
+        tags: Option<Vec<&str>>,
+    ) -> Result<WorkItem> {
+        let url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), id));
+
+        let mut patch = Vec::new();
+
+        if let Some(t) = title {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.Title",
+                "value": t
+            }));
+        }
+
+        if let Some(desc) = description {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.Description",
+                "value": desc
+            }));
+        }
+
+        if let Some(assignee) = assigned_to {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.AssignedTo",
+                "value": assignee
+            }));
+        }
+
+        if let Some(t) = tags {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.Tags",
+                "value": t.join(";")
+            }));
+        }
+
+        if patch.is_empty() {
+            return self.get_work_item(id).await;
+        }
+
+        let resp = self
+            .client
+            .patch(url)
+            .header(header::CONTENT_TYPE, "application/json-patch+json")
+            .json(&patch)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to update work item {}: {}",
+                id,
+                resp.text().await?
+            ));
+        }
+
+        let body: Value = resp.json().await?;
+        self.parse_work_item(&body)
+    }
+
+    async fn update_work_item_state(&self, id: i32, state: &str) -> Result<WorkItem> {
         let url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), id));
 
         let patch = json!([
@@ -163,30 +316,158 @@ impl IssueTracker for AzureDevOpsProvider {
 
         if !resp.status().is_success() {
             return Err(anyhow!(
-                "Failed to update work item {}: {}",
+                "Failed to update work item state {}: {}",
                 id,
                 resp.text().await?
             ));
         }
 
         let body: Value = resp.json().await?;
-        let fields = &body["fields"];
+        self.parse_work_item(&body)
+    }
 
-        Ok(WorkItem {
-            id,
-            title: fields["System.Title"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            work_item_type: fields["System.WorkItemType"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-            state: fields["System.State"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
-        })
+    async fn query_work_items(&self, wiql: &str) -> Result<Vec<WorkItem>> {
+        let url = self.v(&format!("{}/wit/wiql", self.base_api_url()));
+        let body = json!({ "query": wiql });
+        let resp = self.client.post(url).json(&body).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!("Failed to query work items: {}", resp.text().await?));
+        }
+
+        let body: Value = resp.json().await?;
+        let work_items_refs = body["workItems"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No workItems in response"))?;
+
+        if work_items_refs.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids: Vec<i32> = work_items_refs
+            .iter()
+            .map(|wi| wi["id"].as_i64().unwrap_or_default() as i32)
+            .collect();
+
+        self.get_work_items_batch(ids).await
+    }
+
+    async fn create_artifact_link(&self, wi_id: i32, url: &str) -> Result<()> {
+        let api_url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), wi_id));
+        let patch = json!([
+            {
+                "op": "add",
+                "path": "/relations/-",
+                "value": {
+                    "rel": "ArtifactLink",
+                    "url": url,
+                    "attributes": {
+                        "name": "Integrated in build"
+                    }
+                }
+            }
+        ]);
+
+        let resp = self
+            .client
+            .patch(api_url)
+            .header(header::CONTENT_TYPE, "application/json-patch+json")
+            .json(&patch)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to link artifact to work item: {}",
+                resp.text().await?
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn link_work_items(&self, source_id: i32, target_id: i32, relation: &str) -> Result<()> {
+        let api_url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), source_id));
+
+        // We need the target work item URL
+        let target_wi_url = format!("{}/wit/workitems/{}", self.base_api_url(), target_id);
+
+        let patch = json!([
+            {
+                "op": "add",
+                "path": "/relations/-",
+                "value": {
+                    "rel": relation,
+                    "url": target_wi_url,
+                }
+            }
+        ]);
+
+        let resp = self
+            .client
+            .patch(api_url)
+            .header(header::CONTENT_TYPE, "application/json-patch+json")
+            .json(&patch)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!("Failed to link work items: {}", resp.text().await?));
+        }
+
+        Ok(())
+    }
+
+    async fn get_child_work_items(
+        &self,
+        id: i32,
+        work_item_type: Option<&str>,
+    ) -> Result<Vec<WorkItem>> {
+        let url = self.v(&format!(
+            "{}/wit/workitems/{}?$expand=relations",
+            self.base_api_url(),
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to get work item relations: {}",
+                resp.text().await?
+            ));
+        }
+
+        let body: Value = resp.json().await?;
+        let relations = body["relations"].as_array();
+
+        if let Some(rels) = relations {
+            let child_ids: Vec<i32> = rels
+                .iter()
+                .filter(|r| r["rel"] == "System.LinkTypes.Hierarchy-Forward")
+                .filter_map(|r| {
+                    r["url"]
+                        .as_str()
+                        .and_then(|url| url.split('/').last()?.parse::<i32>().ok())
+                })
+                .collect();
+
+            if child_ids.is_empty() {
+                return Ok(vec![]);
+            }
+
+            let children = self.get_work_items_batch(child_ids).await?;
+
+            if let Some(wi_type) = work_item_type {
+                return Ok(children
+                    .into_iter()
+                    .filter(|wi| wi.work_item_type == wi_type)
+                    .collect());
+            }
+
+            return Ok(children);
+        }
+
+        Ok(vec![])
     }
 }
 
@@ -242,6 +523,85 @@ mod tests {
 
         mock_get_ref.assert_async().await;
         mock_delete_ref.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_update_work_item_generic() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock = server
+            .mock(
+                "PATCH",
+                "/test-project/_apis/wit/workitems/123?api-version=7.1",
+            )
+            .match_header("content-type", "application/json-patch+json")
+            .match_body(mockito::Matcher::Json(json!([
+                {
+                    "op": "add",
+                    "path": "/fields/System.Title",
+                    "value": "Updated Title"
+                }
+            ])))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "id": 123,
+                    "fields": {
+                        "System.Title": "Updated Title",
+                        "System.WorkItemType": "User Story",
+                        "System.State": "New"
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .update_work_item(123, Some("Updated Title"), None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(result.title, "Updated Title");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_update_work_item_state() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock = server
+            .mock(
+                "PATCH",
+                "/test-project/_apis/wit/workitems/123?api-version=7.1",
+            )
+            .match_header("content-type", "application/json-patch+json")
+            .match_body(mockito::Matcher::Json(json!([
+                {
+                    "op": "add",
+                    "path": "/fields/System.State",
+                    "value": "Active"
+                }
+            ])))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "id": 123,
+                    "fields": {
+                        "System.Title": "Title",
+                        "System.WorkItemType": "User Story",
+                        "System.State": "Active"
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.update_work_item_state(123, "Active").await.unwrap();
+        assert_eq!(result.state, "Active");
+
+        mock.assert_async().await;
     }
 
     #[tokio::test]
@@ -345,8 +705,12 @@ mod tests {
         let mock = server
             .mock(
                 "GET",
-                "/test-project/_apis/wit/workitems/123?api-version=7.1",
+                "/test-project/_apis/wit/workitems/123",
             )
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("$expand".to_string(), "fields".to_string()),
+                mockito::Matcher::UrlEncoded("api-version".to_string(), "7.1".to_string()),
+            ]))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
@@ -355,7 +719,10 @@ mod tests {
                     "fields": {
                         "System.Title": "Test Title",
                         "System.WorkItemType": "User Story",
-                        "System.State": "New"
+                        "System.State": "New",
+                        "System.Description": "Some description",
+                        "System.Tags": "tag1; tag2",
+                        "System.AssignedTo": { "displayName": "Jules" }
                     }
                 })
                 .to_string(),
@@ -368,6 +735,9 @@ mod tests {
         assert_eq!(result.title, "Test Title");
         assert_eq!(result.work_item_type, "User Story");
         assert_eq!(result.state, "New");
+        assert_eq!(result.description.unwrap(), "Some description");
+        assert_eq!(result.tags, vec!["tag1", "tag2"]);
+        assert_eq!(result.assigned_to.unwrap(), "Jules");
 
         mock.assert_async().await;
     }
@@ -387,6 +757,21 @@ mod tests {
                     "op": "add",
                     "path": "/fields/System.Title",
                     "value": "New Task"
+                },
+                {
+                    "op": "add",
+                    "path": "/fields/System.Description",
+                    "value": "Desc"
+                },
+                {
+                    "op": "add",
+                    "path": "/fields/System.AssignedTo",
+                    "value": "user@test.com"
+                },
+                {
+                    "op": "add",
+                    "path": "/fields/System.Tags",
+                    "value": "tag1;tag2"
                 }
             ])))
             .with_status(201)
@@ -405,13 +790,150 @@ mod tests {
             .await;
 
         let result = provider
-            .create_work_item("New Task", "User Story")
+            .create_work_item(
+                "New Task",
+                "User Story",
+                Some("Desc"),
+                Some("user@test.com"),
+                Some(vec!["tag1", "tag2"]),
+            )
             .await
             .unwrap();
         assert_eq!(result.id, 456);
         assert_eq!(result.title, "New Task");
 
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_query_work_items() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock_wiql = server
+            .mock("POST", "/test-project/_apis/wit/wiql?api-version=7.1")
+            .match_body(mockito::Matcher::Json(json!({ "query": "SELECT ..." })))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "workItems": [
+                        { "id": 1 },
+                        { "id": 2 }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let mock_batch = server
+            .mock("POST", "/test-project/_apis/wit/workitemsbatch?api-version=7.1")
+            .match_body(mockito::Matcher::Json(json!({
+                "ids": [1, 2],
+                "fields": [
+                    "System.Id",
+                    "System.Title",
+                    "System.WorkItemType",
+                    "System.State",
+                    "System.Description",
+                    "Microsoft.VSTS.TCM.ReproductionSteps",
+                    "System.AssignedTo",
+                    "System.Tags"
+                ]
+            })))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "value": [
+                        { "id": 1, "fields": { "System.Title": "T1", "System.WorkItemType": "Task", "System.State": "New" } },
+                        { "id": 2, "fields": { "System.Title": "T2", "System.WorkItemType": "Task", "System.State": "New" } }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.query_work_items("SELECT ...").await.unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, 1);
+        assert_eq!(result[1].id, 2);
+
+        mock_wiql.assert_async().await;
+        mock_batch.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_child_work_items() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock_get_rels = server
+            .mock(
+                "GET",
+                "/test-project/_apis/wit/workitems/123",
+            )
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("$expand".to_string(), "relations".to_string()),
+                mockito::Matcher::UrlEncoded("api-version".to_string(), "7.1".to_string()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "id": 123,
+                    "relations": [
+                        {
+                            "rel": "System.LinkTypes.Hierarchy-Forward",
+                            "url": "https://dev.azure.com/org/proj/_apis/wit/workItems/456"
+                        },
+                        {
+                            "rel": "System.LinkTypes.Hierarchy-Forward",
+                            "url": "https://dev.azure.com/org/proj/_apis/wit/workItems/789"
+                        },
+                        {
+                            "rel": "System.LinkTypes.Hierarchy-Reverse",
+                            "url": "https://dev.azure.com/org/proj/_apis/wit/workItems/111"
+                        }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let mock_batch = server
+            .mock("POST", "/test-project/_apis/wit/workitemsbatch?api-version=7.1")
+            .match_body(mockito::Matcher::Json(json!({
+                "ids": [456, 789],
+                "fields": [
+                    "System.Id",
+                    "System.Title",
+                    "System.WorkItemType",
+                    "System.State",
+                    "System.Description",
+                    "Microsoft.VSTS.TCM.ReproductionSteps",
+                    "System.AssignedTo",
+                    "System.Tags"
+                ]
+            })))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "value": [
+                        { "id": 456, "fields": { "System.Title": "C1", "System.WorkItemType": "Task", "System.State": "New" } },
+                        { "id": 789, "fields": { "System.Title": "C2", "System.WorkItemType": "Task", "System.State": "New" } }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.get_child_work_items(123, None).await.unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, 456);
+        assert_eq!(result[1].id, 789);
+
+        mock_get_rels.assert_async().await;
+        mock_batch.assert_async().await;
     }
 
     #[tokio::test]

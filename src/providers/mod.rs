@@ -7,8 +7,36 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait IssueTracker {
     async fn get_work_item(&self, id: i32) -> Result<WorkItem>;
-    async fn create_work_item(&self, title: &str, work_item_type: &str) -> Result<WorkItem>;
-    async fn update_work_item(&self, id: i32, state: &str) -> Result<WorkItem>;
+    async fn create_work_item(
+        &self,
+        title: &str,
+        work_item_type: &str,
+        description: Option<&str>,
+        assigned_to: Option<&str>,
+        tags: Option<Vec<&str>>,
+    ) -> Result<WorkItem>;
+    async fn update_work_item(
+        &self,
+        id: i32,
+        title: Option<&str>,
+        description: Option<&str>,
+        assigned_to: Option<&str>,
+        tags: Option<Vec<&str>>,
+    ) -> Result<WorkItem>;
+    async fn update_work_item_state(&self, id: i32, state: &str) -> Result<WorkItem>;
+    async fn query_work_items(&self, wiql: &str) -> Result<Vec<WorkItem>>;
+    async fn create_artifact_link(&self, wi_id: i32, url: &str) -> Result<()>;
+    async fn link_work_items(
+        &self,
+        source_id: i32,
+        target_id: i32,
+        relation: &str,
+    ) -> Result<()>;
+    async fn get_child_work_items(
+        &self,
+        id: i32,
+        work_item_type: Option<&str>,
+    ) -> Result<Vec<WorkItem>>;
 }
 
 #[async_trait]

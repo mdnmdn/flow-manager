@@ -33,21 +33,21 @@ The VCS provider handles local and remote repository operations.
     - `check_submodule_status(path)`: Check for changes/unpushed commits in a submodule.
     - `update_submodule_pointer(path)`: Stage and commit a submodule update.
 
-## 2. Issue Tracker (Azure DevOps Work Items)
+## 2. Issue Tracker (Azure DevOps Work Items) [COMPLETED]
 
 The Issue Tracker manages work items and their relationships.
 
 ### Features
 - **Work Item Management**:
-    - `get_work_item(id)`: Fetch details of a specific WI.
-    - `create_work_item(title, type, description, assigned_to, tags)`: Create a new WI.
-    - `update_work_item(id, fields)`: Update WI fields (state, title, description, etc.).
-    - `update_work_item_state(id, state)`: Transition a WI to a new state (e.g., Active, Closed).
-    - `query_work_items(wiql)`: Execute a raw WIQL query for filtering.
+    - [x] `get_work_item(id)`: Fetch details of a specific WI.
+    - [x] `create_work_item(title, type, description, assigned_to, tags)`: Create a new WI.
+    - [x] `update_work_item(id, fields)`: Update WI fields (state, title, description, etc.).
+    - [x] `update_work_item_state(id, state)`: Transition a WI to a new state (e.g., Active, Closed).
+    - [x] `query_work_items(wiql)`: Execute a raw WIQL query for filtering.
 - **Link Management**:
-    - `create_artifact_link(wi_id, url)`: Link a branch or PR to a WI.
-    - `link_work_items(source_id, target_id, relation)`: Create a parent/child or other relationship.
-    - `get_child_work_items(id, type)`: List children of a specific WI (e.g., todos of a story).
+    - [x] `create_artifact_link(wi_id, url)`: Link a branch or PR to a WI.
+    - [x] `link_work_items(source_id, target_id, relation)`: Create a parent/child or other relationship.
+    - [x] `get_child_work_items(id, type)`: List children of a specific WI (e.g., todos of a story).
 
 ## 3. Pipeline Provider (Azure DevOps Pipelines)
 
