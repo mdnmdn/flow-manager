@@ -1065,6 +1065,73 @@ mod tests {
 
         mock.assert_async().await;
     }
+
+    #[tokio::test]
+    async fn test_get_latest_run() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock = server
+            .mock(
+                "GET",
+                "/test-project/_apis/pipelines/runs?branchName=refs/heads/feature&api-version=7.1",
+            )
+            .with_status(200)
+            .with_body(
+                json!({
+                    "value": [
+                        {
+                            "id": 100,
+                            "state": "completed",
+                            "result": "succeeded",
+                            "_links": {
+                                "web": { "href": "http://run-url" }
+                            }
+                        }
+                    ]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let run = provider.get_latest_run("feature").await.unwrap().unwrap();
+        assert_eq!(run.id, 100);
+        assert_eq!(run.status, "completed");
+        assert_eq!(run.result.unwrap(), "succeeded");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_run_status() {
+        let (mut server, provider) = setup_mock_server().await;
+
+        let mock = server
+            .mock(
+                "GET",
+                "/test-project/_apis/pipelines/runs/123?api-version=7.1",
+            )
+            .with_status(200)
+            .with_body(
+                json!({
+                    "id": 123,
+                    "state": "inProgress",
+                    "_links": {
+                        "web": { "href": "http://run-url" }
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let run = provider.get_run_status(123).await.unwrap();
+        assert_eq!(run.id, 123);
+        assert_eq!(run.status, "inProgress");
+        assert!(run.result.is_none());
+
+        mock.assert_async().await;
+    }
 }
 
 #[async_trait]
@@ -1566,19 +1633,51 @@ impl PipelineProvider for AzureDevOpsProvider {
         })
     }
 
-    async fn get_pipeline_run(&self, pipeline_id: i32, run_id: i32) -> Result<PipelineRun> {
+    async fn get_latest_run(&self, branch: &str) -> Result<Option<PipelineRun>> {
         let url = self.v(&format!(
-            "{}/pipelines/{}/runs/{}",
+            "{}/pipelines/runs?branchName={}",
             self.base_api_url(),
-            pipeline_id,
+            self.normalize_ref(branch)
+        ));
+        let resp = self.client.get(url).send().await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!("Failed to list runs: {}", resp.text().await?));
+        }
+
+        let body: Value = resp.json().await?;
+        let items = body["value"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No value array in response"))?;
+
+        if items.is_empty() {
+            return Ok(None);
+        }
+
+        let body = &items[0];
+
+        Ok(Some(PipelineRun {
+            id: body["id"].as_i64().unwrap_or_default() as i32,
+            status: body["state"].as_str().unwrap_or_default().to_string(),
+            result: body["result"].as_str().map(|s| s.to_string()),
+            url: body["_links"]["web"]["href"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+        }))
+    }
+
+    async fn get_run_status(&self, run_id: i32) -> Result<PipelineRun> {
+        let url = self.v(&format!(
+            "{}/pipelines/runs/{}",
+            self.base_api_url(),
             run_id
         ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
             return Err(anyhow!(
-                "Failed to get pipeline run {}/{}: {}",
-                pipeline_id,
+                "Failed to get pipeline run {}: {}",
                 run_id,
                 resp.text().await?
             ));

@@ -1,5 +1,5 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, PullRequest, Repository, WorkItem,
+    MergeStrategy, Pipeline, PipelineRun, PullRequest, QualityIssue, Repository, WorkItem,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -94,7 +94,17 @@ pub trait VCSProvider {
 pub trait PipelineProvider {
     async fn list_pipelines(&self) -> Result<Vec<Pipeline>>;
     async fn run_pipeline(&self, pipeline_id: i32, branch: &str) -> Result<PipelineRun>;
-    async fn get_pipeline_run(&self, pipeline_id: i32, run_id: i32) -> Result<PipelineRun>;
+    async fn get_latest_run(&self, branch: &str) -> Result<Option<PipelineRun>>;
+    async fn get_run_status(&self, run_id: i32) -> Result<PipelineRun>;
+}
+
+#[async_trait]
+pub trait QualityProvider {
+    async fn get_open_issues(
+        &self,
+        project_key: &str,
+        severity: Option<&str>,
+    ) -> Result<Vec<QualityIssue>>;
 }
 
 pub mod adonet;

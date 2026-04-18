@@ -12,6 +12,14 @@ pub struct WorkItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityIssue {
+    pub key: String,
+    pub message: String,
+    pub severity: String,
+    pub component: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
     pub id: i32,
     pub title: String,
