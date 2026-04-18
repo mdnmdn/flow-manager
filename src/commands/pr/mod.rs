@@ -15,9 +15,9 @@ pub async fn show(id: Option<String>) -> Result<()> {
         match ContextManager::resolve_id(&id_str) {
             IdResolution::PullRequest(id) => id,
             IdResolution::WorkItem(_wi_id) => {
-                             // Actually IssueTracker doesn't have "get PR for WI".
-                             // We usually derive it from the branch if we have the branch name.
-                             // For now, let's assume we can only easily find PR by branch or ID.
+                // Actually IssueTracker doesn't have "get PR for WI".
+                // We usually derive it from the branch if we have the branch name.
+                // For now, let's assume we can only easily find PR by branch or ID.
                 return Err(anyhow!(
                     "Finding PR by WI ID not yet fully supported without branch context"
                 ));
