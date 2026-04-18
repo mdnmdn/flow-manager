@@ -1442,6 +1442,37 @@ impl VCSProvider for AzureDevOpsProvider {
 
         Ok(())
     }
+
+    async fn get_current_branch(&self) -> Result<String> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn checkout_branch(&self, _name: &str) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn get_status(&self) -> Result<String> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn stash_push(&self, _message: &str) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn stash_pop(&self) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn push(&self, _force: bool) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn pull(&self) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn commit(&self, _message: &str, _all: bool) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn check_submodule_status(&self, _path: &str) -> Result<bool> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
+    async fn update_submodule_pointer(&self, _path: &str) -> Result<()> {
+        Err(anyhow!("Not implemented for Azure DevOps provider (use LocalGitProvider)"))
+    }
 }
 
 #[async_trait]
