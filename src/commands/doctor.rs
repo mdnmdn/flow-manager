@@ -12,9 +12,14 @@ pub async fn run(fix: bool) -> Result<()> {
 
     // 1. Check Git
     let git_check = check_git();
+    let git_repo_check = check_git_repo();
     println!("| Check | Status |");
     println!("|-------|--------|");
-    println!("| Git   | {} |", if git_check { "✓" } else { "✗" });
+    println!("| Git Installed | {} |", if git_check { "✓" } else { "✗" });
+    println!(
+        "| Git Repo      | {} |",
+        if git_repo_check { "✓" } else { "✗" }
+    );
 
     // 2. Check Providers
     let ado = AzureDevOpsProvider::new(&config.ado)?;
@@ -67,4 +72,12 @@ pub async fn run(fix: bool) -> Result<()> {
 
 fn check_git() -> bool {
     Command::new("git").arg("--version").output().is_ok()
+}
+
+fn check_git_repo() -> bool {
+    Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
