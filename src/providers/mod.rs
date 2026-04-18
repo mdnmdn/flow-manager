@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::core::models::{WorkItem, PullRequest, Pipeline, PipelineRun, Repository};
+use crate::core::models::{WorkItem, PullRequest, Pipeline, PipelineRun, Repository, MergeStrategy};
 use anyhow::Result;
 
 #[async_trait]
@@ -11,16 +11,37 @@ pub trait IssueTracker {
 
 #[async_trait]
 pub trait VCSProvider {
-    async fn get_pull_request(&self, repository: &str, id: i32) -> Result<PullRequest>;
+    async fn get_pull_request_by_branch(&self, repository: &str, branch: &str) -> Result<Option<PullRequest>>;
+    async fn get_pull_request_details(&self, repository: &str, id: i32) -> Result<PullRequest>;
     async fn create_pull_request(
         &self,
         repository: &str,
-        title: &str,
         source: &str,
         target: &str,
+        title: &str,
+        description: &str,
+        is_draft: bool,
     ) -> Result<PullRequest>;
     async fn create_branch(&self, repository: &str, name: &str, source: &str) -> Result<()>;
+    async fn delete_branch(&self, repository: &str, name: &str) -> Result<()>;
     async fn get_repository(&self, name: &str) -> Result<Repository>;
+    async fn update_pull_request(
+        &self,
+        repository: &str,
+        id: i32,
+        title: Option<&str>,
+        description: Option<&str>,
+        is_draft: Option<bool>,
+        status: Option<&str>,
+    ) -> Result<PullRequest>;
+    async fn complete_pull_request(
+        &self,
+        repository: &str,
+        id: i32,
+        strategy: MergeStrategy,
+        delete_source_branch: bool,
+    ) -> Result<()>;
+    async fn add_reviewer(&self, repository: &str, id: i32, reviewer_id: &str) -> Result<()>;
 }
 
 #[async_trait]
