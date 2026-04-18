@@ -1,10 +1,8 @@
-pub async fn run(message: Option<String>, _docs_message: Option<String>) -> anyhow::Result<()> {
-    // SPECIFICATION:
-    // Shorthand for fm commit --all && fm push.
-    //
-    // PSEUDO-CODE:
-    // 1. Execute Commit command with all=true.
-    // 2. Execute Push command.
-    println!("Scaffold: fm sync --message {:?}", message);
+use crate::commands::{commit, push};
+use anyhow::Result;
+
+pub async fn run(message: Option<String>, docs_message: Option<String>) -> Result<()> {
+    commit::run(message, true, false, docs_message, false).await?;
+    push::run(false, false).await?;
     Ok(())
 }

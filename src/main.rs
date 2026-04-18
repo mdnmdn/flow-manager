@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
             severity,
             max,
         } => commands::sonar::run(project, severity, max).await?,
+        cli::Commands::Doctor { fix } => commands::doctor::run(fix).await?,
         cli::Commands::Plumbing(cmd) => match cmd {
             cli::PlumbingCommands::Git { command } => match command {
                 cli::GitPlumbingCommands::BranchCurrent => {
@@ -134,7 +135,10 @@ async fn main() -> anyhow::Result<()> {
             },
         },
         cli::Commands::Version => {
-            println!("fm version {}", option_env!("FM_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")));
+            println!(
+                "fm version {}",
+                option_env!("FM_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+            );
         }
     }
 

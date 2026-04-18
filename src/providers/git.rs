@@ -8,7 +8,7 @@ use crate::providers::VCSProvider;
 pub struct LocalGitProvider;
 
 impl LocalGitProvider {
-    fn run_git(&self, args: &[&str]) -> Result<String> {
+    pub fn run_git(&self, args: &[&str]) -> Result<String> {
         let output = Command::new("git").args(args).output()?;
 
         if !output.status.success() {
