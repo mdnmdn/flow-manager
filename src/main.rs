@@ -1,8 +1,10 @@
 use app::cli;
+use app::core::config::Config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+    let _config = Config::load().ok();
     let cli = cli::parse();
 
     match cli.command {

@@ -3,10 +3,22 @@ use crate::providers::{IssueTracker, VCSProvider};
 use crate::core::models::{WorkItem, PullRequest};
 use anyhow::Result;
 
+use crate::core::config::AdoConfig;
+
 pub struct AzureDevOpsProvider {
     pub organization_url: String,
     pub project: String,
     pub pat: String,
+}
+
+impl AzureDevOpsProvider {
+    pub fn new(config: &AdoConfig) -> Self {
+        Self {
+            organization_url: config.url.clone(),
+            project: config.project.clone(),
+            pat: config.pat.clone(),
+        }
+    }
 }
 
 #[async_trait]

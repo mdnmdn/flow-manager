@@ -1,0 +1,65 @@
+use serde::{Deserialize, Serialize};
+use config::{Config as ConfigLoader, ConfigError, File, Environment};
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Config {
+    pub ado: AdoConfig,
+    pub sonar: Option<SonarConfig>,
+    pub fm: FmConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AdoConfig {
+    pub url: String,
+    pub project: String,
+    pub pat: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SonarConfig {
+    pub url: String,
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FmConfig {
+    #[serde(default = "default_merge_strategy")]
+    pub merge_strategy: String,
+    #[serde(default = "default_target_branch")]
+    pub default_target: String,
+    #[serde(default = "default_wi_type")]
+    pub default_wi_type: String,
+    pub docs_submodule: Option<String>,
+}
+
+fn default_merge_strategy() -> String {
+    "squash".to_string()
+}
+
+fn default_target_branch() -> String {
+    "main".to_string()
+}
+
+fn default_wi_type() -> String {
+    "User Story".to_string()
+}
+
+impl Config {
+    pub fn load() -> Result<Self, ConfigError> {
+        let s = ConfigLoader::builder()
+            // Start with default values if any
+            .set_default("fm.merge_strategy", "squash")?
+            .set_default("fm.default_target", "main")?
+            .set_default("fm.default_wi_type", "User Story")?
+            .set_default("fm.docs_submodule", "_docs")?
+            // Add configuration from files
+            .add_source(File::with_name("fm").required(false))
+            .add_source(File::with_name(".env").required(false))
+            // Add configuration from environment variables (with a prefix like FM_)
+            // e.g. FM_ADO_URL will set ado.url
+            .add_source(Environment::with_prefix("FM").separator("__"))
+            .build()?;
+
+        s.try_deserialize()
+    }
+}
