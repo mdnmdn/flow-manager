@@ -14,15 +14,41 @@ pub async fn show(id: Option<String>) -> Result<()> {
     let pr_id = if let Some(id_str) = id {
         match ContextManager::resolve_id(&id_str) {
             IdResolution::PullRequest(id) => id,
-            IdResolution::WorkItem(_wi_id) => {
-                // Actually IssueTracker doesn't have "get PR for WI".
-                // We usually derive it from the branch if we have the branch name.
-                // For now, let's assume we can only easily find PR by branch or ID.
-                return Err(anyhow!(
-                    "Finding PR by WI ID not yet fully supported without branch context"
-                ));
+            IdResolution::WorkItem(wi_id) => {
+                let wi = ado.get_work_item(wi_id).await?;
+                // Derive branch name as fm does
+                let branch_name = ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
+                let pr = ado
+                    .get_pull_request_by_branch(&config.ado.project, &branch_name)
+                    .await?;
+                match pr {
+                    Some(p) => p.id,
+                    None => {
+                        return Err(anyhow!(
+                            "No PR found for Work Item #{} (searched branch `{}`)",
+                            wi_id,
+                            branch_name
+                        ))
+                    }
+                }
             }
-            IdResolution::Ambiguous(id) => id,
+            IdResolution::Ambiguous(id) => {
+                // Try as PR first
+                if let Ok(p) = ado.get_pull_request_details(&config.ado.project, id).await {
+                    p.id
+                } else {
+                    // Try as WI
+                    let wi = ado.get_work_item(id).await?;
+                    let branch_name = ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
+                    let pr = ado
+                        .get_pull_request_by_branch(&config.ado.project, &branch_name)
+                        .await?;
+                    match pr {
+                        Some(p) => p.id,
+                        None => return Err(anyhow!("Could not resolve ID {} to a PR", id)),
+                    }
+                }
+            }
             _ => return Err(anyhow!("Invalid ID")),
         }
     } else {
@@ -160,7 +186,7 @@ pub async fn review(id: String) -> Result<()> {
         .await?;
     let target_branch = pr.source_branch.replace("refs/heads/", "");
 
-    git.run_git(&["fetch", "origin"])?;
+    git.fetch().await?;
     git.checkout_branch(&target_branch).await?;
 
     println!("Now reviewing PR #{} on branch `{}`", pr.id, target_branch);

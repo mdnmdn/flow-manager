@@ -16,14 +16,17 @@ pub async fn run(
     let git = LocalGitProvider;
 
     // 1. Handle submodules
+    // 1. Handle submodules
     if !no_docs {
         for sub in &config.fm.submodules {
             if git.check_submodule_status(sub).await? {
                 println!("Handling submodule `{}`...", sub);
+                // Submodule handling remains somewhat git-specific for now because it involves "-C" or path context.
+                // However, we could potentially add methods to VCSProvider for submodule operations.
                 let msg = docs_message.clone().unwrap_or_else(|| {
                     format!("docs: {}", message.as_deref().unwrap_or("update docs"))
                 });
-                // Commit in submodule
+                // Commit in submodule (this is still using run_git but in the context of the submodule)
                 git.run_git(&["-C", sub, "add", "-A"])?;
                 git.run_git(&["-C", sub, "commit", "-m", &msg])?;
                 git.run_git(&["-C", sub, "push"])?;
@@ -54,12 +57,7 @@ pub async fn run(
     if all {
         args.push("-a");
     }
-    if amend {
-        args.push("--amend");
-        args.push("--no-edit");
-    } // simplified amend
-
-    git.run_git(&args)?;
+    git.commit(&commit_msg, all, amend).await?;
     println!("Committed to `{}`", branch);
 
     Ok(())

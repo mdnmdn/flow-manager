@@ -1549,7 +1549,32 @@ impl VCSProvider for AzureDevOpsProvider {
             "Not implemented for Azure DevOps provider (use LocalGitProvider)"
         ))
     }
-    async fn commit(&self, _message: &str, _all: bool) -> Result<()> {
+    async fn fetch(&self) -> Result<()> {
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
+    }
+    async fn commit(&self, _message: &str, _all: bool, _amend: bool) -> Result<()> {
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
+    }
+    async fn discard_local_changes(&self) -> Result<()> {
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
+    }
+    async fn get_log(&self, _range: Option<&str>, _limit: Option<i32>) -> Result<String> {
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
+    }
+    async fn merge(&self, _source: &str) -> Result<()> {
+        Err(anyhow!(
+            "Not implemented for Azure DevOps provider (use LocalGitProvider)"
+        ))
+    }
+    async fn rebase(&self, _target: &str) -> Result<()> {
         Err(anyhow!(
             "Not implemented for Azure DevOps provider (use LocalGitProvider)"
         ))

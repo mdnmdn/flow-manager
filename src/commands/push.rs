@@ -10,18 +10,15 @@ pub async fn run(force: bool, no_docs: bool) -> Result<()> {
     if !no_docs {
         for sub in &config.fm.submodules {
             // Check if submodule pointer was updated but not committed
-            let status = git.run_git(&["status", "--porcelain", sub])?;
-            if !status.is_empty() {
+            // We use status here, maybe a better method in VCSProvider?
+            let status = git.get_status().await?;
+            if status.contains(sub) {
                 println!(
                     "Submodule `{}` has pending pointer update. Committing it...",
                     sub
                 );
-                git.run_git(&[
-                    "commit",
-                    "-m",
-                    &format!("chore: update {} submodule pointer", sub),
-                    sub,
-                ])?;
+                git.commit(&format!("chore: update {} submodule pointer", sub), false, false)
+                    .await?;
             }
         }
     }
