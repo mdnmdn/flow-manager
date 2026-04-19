@@ -1,8 +1,8 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager};
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
-use crate::providers::{IssueTracker, VCSProvider};
+use crate::providers::VCSProvider;
 use anyhow::Result;
 
 pub async fn run(
@@ -42,8 +42,9 @@ pub async fn run(
         Some(m) => m,
         None => {
             if let Context::Activity { wi_id, .. } = ContextManager::detect(&branch) {
-                let ado = AzureDevOpsProvider::new(&config.ado)?;
-                let wi = ado.get_work_item(wi_id).await?;
+                let provider_set = ProviderSet::from_config(&config)?;
+                let tracker = provider_set.issue_tracker;
+                let wi = tracker.get_work_item(&wi_id).await?;
                 format!("[#{}] {}: work in progress", wi.id, wi.title)
             } else {
                 return Err(anyhow::anyhow!(

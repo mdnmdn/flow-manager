@@ -1,8 +1,44 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct WorkItemId(pub String);
+
+impl WorkItemId {
+    pub fn from_int(n: i32) -> Self {
+        WorkItemId(n.to_string())
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for WorkItemId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i32> for WorkItemId {
+    fn from(id: i32) -> Self {
+        WorkItemId::from_int(id)
+    }
+}
+
+impl From<String> for WorkItemId {
+    fn from(id: String) -> Self {
+        WorkItemId(id)
+    }
+}
+
+impl From<&str> for WorkItemId {
+    fn from(id: &str) -> Self {
+        WorkItemId(id.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkItem {
-    pub id: i32,
+    pub id: WorkItemId,
     pub title: String,
     pub work_item_type: String,
     pub state: String,
@@ -21,7 +57,7 @@ pub struct QualityIssue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
-    pub id: i32,
+    pub id: String,
     pub title: String,
     pub status: String,
     pub source_branch: String,
@@ -31,14 +67,14 @@ pub struct PullRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
-    pub id: i32,
+    pub id: String,
     pub name: String,
     pub folder: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineRun {
-    pub id: i32,
+    pub id: String,
     pub status: String,
     pub result: Option<String>,
     pub url: String,
@@ -52,7 +88,45 @@ pub struct Repository {
     pub default_branch: Option<String>,
 }
 
+#[derive(Debug, Default)]
+pub struct WorkItemFilter {
+    pub state: Option<String>,
+    pub assigned_to: Option<String>,
+    pub labels: Vec<String>,
+    pub work_item_type: Option<String>,
+    pub text: Option<String>,
+    pub milestone: Option<String>,
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum UserId {
+    Email(String),
+    AccountId(String), // Jira Cloud UUID
+    Username(String),  // GitHub login, GitLab username
+}
+
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UserId::Email(e) => write!(f, "{}", e),
+            UserId::AccountId(a) => write!(f, "{}", a),
+            UserId::Username(u) => write!(f, "{}", u),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderCapabilities {
+    pub draft_pull_requests: bool,
+    pub pipeline_support: bool,
+    pub work_item_hierarchy: bool,        // parent/child relationships
+    pub formal_artifact_links: bool,      // vs. description/comment-based linking
+    pub merge_strategies: Vec<MergeStrategy>,
+    pub work_item_relations: Vec<String>, // "blocks", "relates_to", "parent", etc.
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum MergeStrategy {
     Squash,

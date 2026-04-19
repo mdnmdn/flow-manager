@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::process::Command;
 
-use crate::core::models::{MergeStrategy, PullRequest, Repository};
+use crate::core::models::{MergeStrategy, ProviderCapabilities, PullRequest, Repository};
 use crate::providers::VCSProvider;
 
 pub struct LocalGitProvider;
@@ -25,6 +25,10 @@ impl LocalGitProvider {
 
 #[async_trait]
 impl VCSProvider for LocalGitProvider {
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::default()
+    }
+
     async fn get_pull_request_by_branch(
         &self,
         _repository: &str,
@@ -32,7 +36,7 @@ impl VCSProvider for LocalGitProvider {
     ) -> Result<Option<PullRequest>> {
         Err(anyhow!("Not implemented for local git"))
     }
-    async fn get_pull_request_details(&self, _repository: &str, _id: i32) -> Result<PullRequest> {
+    async fn get_pull_request_details(&self, _repository: &str, _id: &str) -> Result<PullRequest> {
         Err(anyhow!("Not implemented for local git"))
     }
     async fn create_pull_request(
@@ -49,7 +53,7 @@ impl VCSProvider for LocalGitProvider {
     async fn update_pull_request(
         &self,
         _repository: &str,
-        _id: i32,
+        _id: &str,
         _title: Option<&str>,
         _description: Option<&str>,
         _is_draft: Option<bool>,
@@ -60,13 +64,13 @@ impl VCSProvider for LocalGitProvider {
     async fn complete_pull_request(
         &self,
         _repository: &str,
-        _id: i32,
+        _id: &str,
         _strategy: MergeStrategy,
         _delete_source_branch: bool,
     ) -> Result<()> {
         Err(anyhow!("Not implemented for local git"))
     }
-    async fn add_reviewer(&self, _repository: &str, _id: i32, _reviewer_id: &str) -> Result<()> {
+    async fn add_reviewer(&self, _repository: &str, _id: &str, _reviewer_id: &str) -> Result<()> {
         Err(anyhow!("Not implemented for local git"))
     }
     async fn create_branch(&self, _repository: &str, _name: &str, _source: &str) -> Result<()> {

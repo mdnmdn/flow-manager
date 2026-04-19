@@ -1,27 +1,29 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager, IdResolution, OutputFormatter};
 use crate::core::models::MergeStrategy;
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
-use crate::providers::{IssueTracker, VCSProvider};
+use crate::providers::VCSProvider;
 use anyhow::{anyhow, Result};
 
 pub async fn show(id: Option<String>) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
+
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
 
     let pr_id = if let Some(id_str) = id {
         match ContextManager::resolve_id(&id_str) {
             IdResolution::PullRequest(id) => id,
             IdResolution::WorkItem(wi_id) => {
-                let wi = ado.get_work_item(wi_id).await?;
+                let wi = tracker.get_work_item(&wi_id).await?;
                 // Derive branch name as fm does
                 let branch_name =
-                    ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
-                let pr = ado
-                    .get_pull_request_by_branch(&config.ado.project, &branch_name)
-                    .await?;
+                    ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
                 match pr {
                     Some(p) => p.id,
                     None => {
@@ -35,16 +37,14 @@ pub async fn show(id: Option<String>) -> Result<()> {
             }
             IdResolution::Ambiguous(id) => {
                 // Try as PR first
-                if let Ok(p) = ado.get_pull_request_details(&config.ado.project, id).await {
+                if let Ok(p) = vcs.get_pull_request_details(&repo_name, id.as_str()).await {
                     p.id
                 } else {
                     // Try as WI
-                    let wi = ado.get_work_item(id).await?;
+                    let wi = tracker.get_work_item(&id).await?;
                     let branch_name =
-                        ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type);
-                    let pr = ado
-                        .get_pull_request_by_branch(&config.ado.project, &branch_name)
-                        .await?;
+                        ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                    let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
                     match pr {
                         Some(p) => p.id,
                         None => return Err(anyhow!("Could not resolve ID {} to a PR", id)),
@@ -55,18 +55,14 @@ pub async fn show(id: Option<String>) -> Result<()> {
         }
     } else {
         let branch = git.get_current_branch().await?;
-        let pr = ado
-            .get_pull_request_by_branch(&config.ado.project, &branch)
-            .await?;
+        let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
         match pr {
             Some(p) => p.id,
             None => return Err(anyhow!("No PR found for current branch")),
         }
     };
 
-    let pr = ado
-        .get_pull_request_details(&config.ado.project, pr_id)
-        .await?;
+    let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
 
     let template = "## PR #{{id}} — {{title}}\n\n| Field | Value |\n|---|---|\n| State | {{status}} |\n| Draft | {{is_draft}} |\n| Source | `{{source_branch}}` |\n| Target | `{{target_branch}}` |\n";
     println!(
@@ -85,20 +81,23 @@ pub async fn update(
     add_reviewers: Vec<String>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
-    let pr = ado
-        .get_pull_request_by_branch(&config.ado.project, &branch)
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+
+    let pr = vcs
+        .get_pull_request_by_branch(&repo_name, &branch)
         .await?
         .ok_or_else(|| anyhow!("No PR found for current branch"))?;
 
     let is_draft = if publish { Some(false) } else { None };
 
-    ado.update_pull_request(
-        &config.ado.project,
-        pr.id,
+    vcs.update_pull_request(
+        &repo_name,
+        &pr.id,
         title.as_deref(),
         description.as_deref(),
         is_draft,
@@ -107,8 +106,7 @@ pub async fn update(
     .await?;
 
     for reviewer in add_reviewers {
-        ado.add_reviewer(&config.ado.project, pr.id, &reviewer)
-            .await?;
+        vcs.add_reviewer(&repo_name, &pr.id, &reviewer).await?;
     }
 
     println!("PR #{} updated.", pr.id);
@@ -121,12 +119,16 @@ pub async fn merge(
     _bypass_policy: bool,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
-    let pr = ado
-        .get_pull_request_by_branch(&config.ado.project, &branch)
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+
+    let pr = vcs
+        .get_pull_request_by_branch(&repo_name, &branch)
         .await?
         .ok_or_else(|| anyhow!("No PR found for current branch"))?;
 
@@ -142,17 +144,19 @@ pub async fn merge(
         _ => MergeStrategy::Squash,
     };
 
-    ado.complete_pull_request(
-        &config.ado.project,
-        pr.id,
-        merge_strategy,
-        delete_source_branch,
-    )
-    .await?;
+    if !vcs.capabilities().merge_strategies.contains(&merge_strategy) {
+        return Err(anyhow!(
+            "Merge strategy `{}` is not supported by this provider.",
+            merge_strategy
+        ));
+    }
+
+    vcs.complete_pull_request(&repo_name, &pr.id, merge_strategy, delete_source_branch)
+        .await?;
 
     // Also close WI if in Activity context
     if let Context::Activity { wi_id, .. } = ContextManager::detect(&branch) {
-        ado.update_work_item_state(wi_id, "Closed").await?;
+        tracker.update_work_item_state(&wi_id, "Closed").await?;
         println!("Work Item #{} closed.", wi_id);
     }
 
@@ -162,8 +166,11 @@ pub async fn merge(
 
 pub async fn review(id: String) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
+
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
 
     // 1. Pause current
     let current_branch = git.get_current_branch().await?;
@@ -179,13 +186,11 @@ pub async fn review(id: String) -> Result<()> {
     // 2. Resolve target PR
     let pr_id = match ContextManager::resolve_id(&id) {
         IdResolution::PullRequest(id) => id,
-        IdResolution::Ambiguous(id) => id,
+        IdResolution::Ambiguous(id) => id.to_string(),
         _ => return Err(anyhow!("Could not resolve to a PR")),
     };
 
-    let pr = ado
-        .get_pull_request_details(&config.ado.project, pr_id)
-        .await?;
+    let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
     let target_branch = pr.source_branch.replace("refs/heads/", "");
 
     git.fetch().await?;

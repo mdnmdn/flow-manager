@@ -1,5 +1,6 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, PullRequest, Repository, WorkItem,
+    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, Repository, WorkItem,
+    WorkItemFilter, WorkItemId,
 };
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
 use anyhow::{anyhow, Result};
@@ -58,9 +59,12 @@ impl AzureDevOpsProvider {
 impl AzureDevOpsProvider {
     fn parse_work_item(&self, body: &Value) -> Result<WorkItem> {
         let fields = &body["fields"];
-        let id = body["id"]
-            .as_i64()
-            .ok_or_else(|| anyhow!("No ID in work item: {:?}", body))? as i32;
+        let id = WorkItemId(
+            body["id"]
+                .as_i64()
+                .ok_or_else(|| anyhow!("No ID in work item: {:?}", body))?
+                .to_string(),
+        );
 
         let tags = fields["System.Tags"]
             .as_str()
@@ -99,14 +103,14 @@ impl AzureDevOpsProvider {
         })
     }
 
-    async fn get_work_items_batch(&self, ids: Vec<i32>) -> Result<Vec<WorkItem>> {
+    async fn get_work_items_batch(&self, ids: Vec<WorkItemId>) -> Result<Vec<WorkItem>> {
         if ids.is_empty() {
             return Ok(vec![]);
         }
 
         let url = self.v(&format!("{}/wit/workitemsbatch", self.base_api_url()));
         let body = json!({
-            "ids": ids,
+            "ids": ids.iter().map(|id: &WorkItemId| id.as_str()).collect::<Vec<&str>>(),
             "fields": [
                 "System.Id",
                 "System.Title",
@@ -144,7 +148,29 @@ impl AzureDevOpsProvider {
 
 #[async_trait]
 impl IssueTracker for AzureDevOpsProvider {
-    async fn get_work_item(&self, id: i32) -> Result<WorkItem> {
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities {
+            draft_pull_requests: true,
+            pipeline_support: true,
+            work_item_hierarchy: true,
+            formal_artifact_links: true,
+            merge_strategies: vec![
+                MergeStrategy::Squash,
+                MergeStrategy::Rebase,
+                MergeStrategy::RebaseMerge,
+                MergeStrategy::NoFastForward,
+            ],
+            work_item_relations: vec![
+                "System.LinkTypes.Hierarchy-Forward".to_string(),
+                "System.LinkTypes.Hierarchy-Reverse".to_string(),
+                "System.LinkTypes.Dependency-Forward".to_string(),
+                "System.LinkTypes.Dependency-Reverse".to_string(),
+                "System.LinkTypes.Related".to_string(),
+            ],
+        }
+    }
+
+    async fn get_work_item(&self, id: &WorkItemId) -> Result<WorkItem> {
         let url = self.v(&format!(
             "{}/wit/workitems/{}?$expand=fields",
             self.base_api_url(),
@@ -229,7 +255,7 @@ impl IssueTracker for AzureDevOpsProvider {
 
     async fn update_work_item(
         &self,
-        id: i32,
+        id: &WorkItemId,
         title: Option<&str>,
         description: Option<&str>,
         assigned_to: Option<&str>,
@@ -295,7 +321,7 @@ impl IssueTracker for AzureDevOpsProvider {
         self.parse_work_item(&body)
     }
 
-    async fn update_work_item_state(&self, id: i32, state: &str) -> Result<WorkItem> {
+    async fn update_work_item_state(&self, id: &WorkItemId, state: &str) -> Result<WorkItem> {
         let url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), id));
 
         let patch = json!([
@@ -326,7 +352,34 @@ impl IssueTracker for AzureDevOpsProvider {
         self.parse_work_item(&body)
     }
 
-    async fn query_work_items(&self, wiql: &str) -> Result<Vec<WorkItem>> {
+    async fn query_work_items(&self, filter: &WorkItemFilter) -> Result<Vec<WorkItem>> {
+        let mut wiql = format!(
+            "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '{}'",
+            self.project
+        );
+
+        if let Some(state) = &filter.state {
+            wiql.push_str(&format!(" AND [System.State] = '{}'", state));
+        }
+        if let Some(assigned_to) = &filter.assigned_to {
+            if assigned_to == "@Me" {
+                wiql.push_str(" AND [System.AssignedTo] = @Me");
+            } else {
+                wiql.push_str(&format!(" AND [System.AssignedTo] = '{}'", assigned_to));
+            }
+        }
+        if let Some(wi_type) = &filter.work_item_type {
+            wiql.push_str(&format!(" AND [System.WorkItemType] = '{}'", wi_type));
+        }
+        for label in &filter.labels {
+            wiql.push_str(&format!(" AND [System.Tags] CONTAINS '{}'", label));
+        }
+        if let Some(text) = &filter.text {
+            wiql.push_str(&format!(" AND [System.Title] CONTAINS '{}'", text));
+        }
+
+        wiql.push_str(" ORDER BY [System.ChangedDate] DESC");
+
         let url = self.v(&format!("{}/wit/wiql", self.base_api_url()));
         let body = json!({ "query": wiql });
         let resp = self.client.post(url).json(&body).send().await?;
@@ -347,15 +400,19 @@ impl IssueTracker for AzureDevOpsProvider {
             return Ok(vec![]);
         }
 
-        let ids: Vec<i32> = work_items_refs
+        let mut ids: Vec<WorkItemId> = work_items_refs
             .iter()
-            .map(|wi| wi["id"].as_i64().unwrap_or_default() as i32)
+            .map(|wi| WorkItemId(wi["id"].as_i64().unwrap_or_default().to_string()))
             .collect();
+
+        if let Some(limit) = filter.limit {
+            ids.truncate(limit as usize);
+        }
 
         self.get_work_items_batch(ids).await
     }
 
-    async fn create_artifact_link(&self, wi_id: i32, url: &str) -> Result<()> {
+    async fn create_artifact_link(&self, wi_id: &WorkItemId, url: &str) -> Result<()> {
         let api_url = self.v(&format!("{}/wit/workitems/{}", self.base_api_url(), wi_id));
         let patch = json!([
             {
@@ -389,7 +446,12 @@ impl IssueTracker for AzureDevOpsProvider {
         Ok(())
     }
 
-    async fn link_work_items(&self, source_id: i32, target_id: i32, relation: &str) -> Result<()> {
+    async fn link_work_items(
+        &self,
+        source_id: &WorkItemId,
+        target_id: &WorkItemId,
+        relation: &str,
+    ) -> Result<()> {
         let api_url = self.v(&format!(
             "{}/wit/workitems/{}",
             self.base_api_url(),
@@ -427,7 +489,7 @@ impl IssueTracker for AzureDevOpsProvider {
 
     async fn get_child_work_items(
         &self,
-        id: i32,
+        id: &WorkItemId,
         work_item_type: Option<&str>,
     ) -> Result<Vec<WorkItem>> {
         let url = self.v(&format!(
@@ -448,13 +510,13 @@ impl IssueTracker for AzureDevOpsProvider {
         let relations = body["relations"].as_array();
 
         if let Some(rels) = relations {
-            let child_ids: Vec<i32> = rels
+            let child_ids: Vec<WorkItemId> = rels
                 .iter()
                 .filter(|r| r["rel"] == "System.LinkTypes.Hierarchy-Forward")
                 .filter_map(|r| {
                     r["url"]
                         .as_str()
-                        .and_then(|url| url.split('/').next_back()?.parse::<i32>().ok())
+                        .and_then(|url| Some(WorkItemId(url.split('/').next_back()?.to_string())))
                 })
                 .collect();
 
@@ -565,7 +627,13 @@ mod tests {
             .await;
 
         let result = provider
-            .update_work_item(123, Some("Updated Title"), None, None, None)
+            .update_work_item(
+                &WorkItemId::from_int(123),
+                Some("Updated Title"),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         assert_eq!(result.title, "Updated Title");
@@ -606,7 +674,7 @@ mod tests {
             .await;
 
         let result = provider
-            .update_work_item_state(123, "Active")
+            .update_work_item_state(&WorkItemId::from_int(123), "Active")
             .await
             .unwrap();
         assert_eq!(result.state, "Active");
@@ -646,7 +714,7 @@ mod tests {
         let pr = provider
             .update_pull_request(
                 "my-repo",
-                123,
+                "123",
                 Some("New Title"),
                 None,
                 Some(false),
@@ -680,7 +748,7 @@ mod tests {
             .await;
 
         provider
-            .complete_pull_request("my-repo", 123, MergeStrategy::Squash, true)
+            .complete_pull_request("my-repo", "123", MergeStrategy::Squash, true)
             .await
             .unwrap();
 
@@ -701,7 +769,7 @@ mod tests {
             .create_async().await;
 
         provider
-            .add_reviewer("my-repo", 123, "user-id")
+            .add_reviewer("my-repo", "123", "user-id")
             .await
             .unwrap();
 
@@ -737,8 +805,8 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.get_work_item(123).await.unwrap();
-        assert_eq!(result.id, 123);
+        let result = provider.get_work_item(&WorkItemId::from_int(123)).await.unwrap();
+        assert_eq!(result.id, WorkItemId::from_int(123));
         assert_eq!(result.title, "Test Title");
         assert_eq!(result.work_item_type, "User Story");
         assert_eq!(result.state, "New");
@@ -806,7 +874,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.id, 456);
+        assert_eq!(result.id, WorkItemId::from_int(456));
         assert_eq!(result.title, "New Task");
 
         mock.assert_async().await;
@@ -818,7 +886,6 @@ mod tests {
 
         let mock_wiql = server
             .mock("POST", "/test-project/_apis/wit/wiql?api-version=7.1")
-            .match_body(mockito::Matcher::Json(json!({ "query": "SELECT ..." })))
             .with_status(200)
             .with_body(
                 json!({
@@ -835,7 +902,7 @@ mod tests {
         let mock_batch = server
             .mock("POST", "/test-project/_apis/wit/workitemsbatch?api-version=7.1")
             .match_body(mockito::Matcher::Json(json!({
-                "ids": [1, 2],
+                "ids": ["1", "2"],
                 "fields": [
                     "System.Id",
                     "System.Title",
@@ -860,10 +927,14 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.query_work_items("SELECT ...").await.unwrap();
+        let filter = WorkItemFilter {
+            state: Some("New".to_string()),
+            ..Default::default()
+        };
+        let result = provider.query_work_items(&filter).await.unwrap();
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].id, 1);
-        assert_eq!(result[1].id, 2);
+        assert_eq!(result[0].id, WorkItemId::from_int(1));
+        assert_eq!(result[1].id, WorkItemId::from_int(2));
 
         mock_wiql.assert_async().await;
         mock_batch.assert_async().await;
@@ -906,7 +977,7 @@ mod tests {
         let mock_batch = server
             .mock("POST", "/test-project/_apis/wit/workitemsbatch?api-version=7.1")
             .match_body(mockito::Matcher::Json(json!({
-                "ids": [456, 789],
+                "ids": ["456", "789"],
                 "fields": [
                     "System.Id",
                     "System.Title",
@@ -931,10 +1002,10 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.get_child_work_items(123, None).await.unwrap();
+        let result = provider.get_child_work_items(&WorkItemId::from_int(123), None).await.unwrap();
         assert_eq!(result.len(), 2);
-        assert_eq!(result[0].id, 456);
-        assert_eq!(result[1].id, 789);
+        assert_eq!(result[0].id, WorkItemId::from_int(456));
+        assert_eq!(result[1].id, WorkItemId::from_int(789));
 
         mock_get_rels.assert_async().await;
         mock_batch.assert_async().await;
@@ -965,10 +1036,10 @@ mod tests {
             .await;
 
         let result = provider
-            .get_pull_request_details("my-repo", 789)
+            .get_pull_request_details("my-repo", "789")
             .await
             .unwrap();
-        assert_eq!(result.id, 789);
+        assert_eq!(result.id, "789");
         assert_eq!(result.title, "PR Title");
 
         mock.assert_async().await;
@@ -997,7 +1068,7 @@ mod tests {
             .await
             .unwrap();
         assert!(pr.is_some());
-        assert_eq!(pr.unwrap().id, 123);
+        assert_eq!(pr.unwrap().id, "123");
 
         mock.assert_async().await;
     }
@@ -1095,7 +1166,7 @@ mod tests {
             .await;
 
         let run = provider.get_latest_run("feature").await.unwrap().unwrap();
-        assert_eq!(run.id, 100);
+        assert_eq!(run.id, "100");
         assert_eq!(run.status, "completed");
         assert_eq!(run.result.unwrap(), "succeeded");
 
@@ -1125,8 +1196,8 @@ mod tests {
             .create_async()
             .await;
 
-        let run = provider.get_run_status(123).await.unwrap();
-        assert_eq!(run.id, 123);
+        let run = provider.get_run_status("123").await.unwrap();
+        assert_eq!(run.id, "123");
         assert_eq!(run.status, "inProgress");
         assert!(run.result.is_none());
 
@@ -1136,6 +1207,20 @@ mod tests {
 
 #[async_trait]
 impl VCSProvider for AzureDevOpsProvider {
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities {
+            draft_pull_requests: true,
+            pipeline_support: true,
+            merge_strategies: vec![
+                MergeStrategy::Squash,
+                MergeStrategy::Rebase,
+                MergeStrategy::RebaseMerge,
+                MergeStrategy::NoFastForward,
+            ],
+            ..Default::default()
+        }
+    }
+
     async fn get_pull_request_by_branch(
         &self,
         repository: &str,
@@ -1164,7 +1249,10 @@ impl VCSProvider for AzureDevOpsProvider {
 
         let item = &items[0];
         Ok(Some(PullRequest {
-            id: item["pullRequestId"].as_i64().unwrap_or_default() as i32,
+            id: item["pullRequestId"]
+                .as_i64()
+                .unwrap_or_default()
+                .to_string(),
             title: item["title"].as_str().unwrap_or_default().to_string(),
             status: item["status"].as_str().unwrap_or_default().to_string(),
             source_branch: item["sourceRefName"]
@@ -1179,7 +1267,7 @@ impl VCSProvider for AzureDevOpsProvider {
         }))
     }
 
-    async fn get_pull_request_details(&self, repository: &str, id: i32) -> Result<PullRequest> {
+    async fn get_pull_request_details(&self, repository: &str, id: &str) -> Result<PullRequest> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests/{}",
             self.base_api_url(),
@@ -1195,7 +1283,7 @@ impl VCSProvider for AzureDevOpsProvider {
         let body: Value = resp.json().await?;
 
         Ok(PullRequest {
-            id,
+            id: id.to_string(),
             title: body["title"].as_str().unwrap_or_default().to_string(),
             status: body["status"].as_str().unwrap_or_default().to_string(),
             source_branch: body["sourceRefName"]
@@ -1242,7 +1330,8 @@ impl VCSProvider for AzureDevOpsProvider {
         let body: Value = resp.json().await?;
         let id = body["pullRequestId"]
             .as_i64()
-            .ok_or_else(|| anyhow!("No pullRequestId in response"))? as i32;
+            .ok_or_else(|| anyhow!("No pullRequestId in response"))?
+            .to_string();
 
         Ok(PullRequest {
             id,
@@ -1395,7 +1484,7 @@ impl VCSProvider for AzureDevOpsProvider {
     async fn update_pull_request(
         &self,
         repository: &str,
-        id: i32,
+        id: &str,
         title: Option<&str>,
         description: Option<&str>,
         is_draft: Option<bool>,
@@ -1435,7 +1524,7 @@ impl VCSProvider for AzureDevOpsProvider {
         let body: Value = resp.json().await?;
 
         Ok(PullRequest {
-            id,
+            id: id.to_string(),
             title: body["title"].as_str().unwrap_or_default().to_string(),
             status: body["status"].as_str().unwrap_or_default().to_string(),
             source_branch: body["sourceRefName"]
@@ -1453,7 +1542,7 @@ impl VCSProvider for AzureDevOpsProvider {
     async fn complete_pull_request(
         &self,
         repository: &str,
-        id: i32,
+        id: &str,
         strategy: MergeStrategy,
         delete_source_branch: bool,
     ) -> Result<()> {
@@ -1485,7 +1574,7 @@ impl VCSProvider for AzureDevOpsProvider {
         Ok(())
     }
 
-    async fn add_reviewer(&self, repository: &str, id: i32, reviewer_id: &str) -> Result<()> {
+    async fn add_reviewer(&self, repository: &str, id: &str, reviewer_id: &str) -> Result<()> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests/{}/reviewers/{}",
             self.base_api_url(),
@@ -1593,6 +1682,13 @@ impl VCSProvider for AzureDevOpsProvider {
 
 #[async_trait]
 impl PipelineProvider for AzureDevOpsProvider {
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities {
+            pipeline_support: true,
+            ..Default::default()
+        }
+    }
+
     async fn list_pipelines(&self) -> Result<Vec<Pipeline>> {
         let url = self.v(&format!("{}/pipelines", self.base_api_url()));
         let resp = self.client.get(url).send().await?;
@@ -1609,7 +1705,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         let mut pipelines = Vec::new();
         for item in items {
             pipelines.push(Pipeline {
-                id: item["id"].as_i64().unwrap_or_default() as i32,
+                id: item["id"].as_i64().unwrap_or_default().to_string(),
                 name: item["name"].as_str().unwrap_or_default().to_string(),
                 folder: item["folder"].as_str().unwrap_or_default().to_string(),
             });
@@ -1618,7 +1714,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         Ok(pipelines)
     }
 
-    async fn run_pipeline(&self, pipeline_id: i32, branch: &str) -> Result<PipelineRun> {
+    async fn run_pipeline(&self, pipeline_id: &str, branch: &str) -> Result<PipelineRun> {
         let url = self.v(&format!(
             "{}/pipelines/{}/runs",
             self.base_api_url(),
@@ -1648,7 +1744,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         let body: Value = resp.json().await?;
 
         Ok(PipelineRun {
-            id: body["id"].as_i64().unwrap_or_default() as i32,
+            id: body["id"].as_i64().unwrap_or_default().to_string(),
             status: body["state"].as_str().unwrap_or_default().to_string(),
             result: body["result"].as_str().map(|s| s.to_string()),
             url: body["_links"]["web"]["href"]
@@ -1682,7 +1778,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         let body = &items[0];
 
         Ok(Some(PipelineRun {
-            id: body["id"].as_i64().unwrap_or_default() as i32,
+            id: body["id"].as_i64().unwrap_or_default().to_string(),
             status: body["state"].as_str().unwrap_or_default().to_string(),
             result: body["result"].as_str().map(|s| s.to_string()),
             url: body["_links"]["web"]["href"]
@@ -1692,7 +1788,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         }))
     }
 
-    async fn get_run_status(&self, run_id: i32) -> Result<PipelineRun> {
+    async fn get_run_status(&self, run_id: &str) -> Result<PipelineRun> {
         let url = self.v(&format!(
             "{}/pipelines/runs/{}",
             self.base_api_url(),
@@ -1711,7 +1807,7 @@ impl PipelineProvider for AzureDevOpsProvider {
         let body: Value = resp.json().await?;
 
         Ok(PipelineRun {
-            id: body["id"].as_i64().unwrap_or_default() as i32,
+            id: body["id"].as_i64().unwrap_or_default().to_string(),
             status: body["state"].as_str().unwrap_or_default().to_string(),
             result: body["result"].as_str().map(|s| s.to_string()),
             url: body["_links"]["web"]["href"]

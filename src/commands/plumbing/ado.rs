@@ -1,12 +1,13 @@
 use crate::core::config::Config;
-use crate::providers::adonet::AzureDevOpsProvider;
-use crate::providers::IssueTracker;
+use crate::core::models::WorkItemId;
+use crate::providers::factory::ProviderSet;
 
-pub async fn wi_get(id: i32) -> anyhow::Result<()> {
+pub async fn wi_get(id: String) -> anyhow::Result<()> {
     let config = Config::load().ok();
     if let Some(config) = config {
-        let provider = AzureDevOpsProvider::new(&config.ado)?;
-        let wi = provider.get_work_item(id).await?;
+        let provider_set = ProviderSet::from_config(&config)?;
+        let tracker = provider_set.issue_tracker;
+        let wi = tracker.get_work_item(&WorkItemId(id)).await?;
         println!("{:?}", wi);
     } else {
         println!("Config not found");

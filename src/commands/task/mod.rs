@@ -1,8 +1,8 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager};
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
-use crate::providers::{IssueTracker, VCSProvider};
+use crate::providers::VCSProvider;
 use anyhow::{anyhow, Result};
 
 pub async fn hold(stash: bool, force: bool, stay: bool) -> Result<()> {
@@ -56,7 +56,8 @@ pub async fn update(
     tags: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -68,9 +69,9 @@ pub async fn update(
 
     let tags_vec: Option<Vec<&str>> = tags.as_ref().map(|t| t.split(';').collect());
 
-    let updated = ado
+    let updated = tracker
         .update_work_item(
-            wi_id,
+            &wi_id,
             title.as_deref(),
             description.as_deref(),
             assigned_to.as_deref(),
@@ -78,7 +79,7 @@ pub async fn update(
         )
         .await?;
     if let Some(s) = state {
-        ado.update_work_item_state(wi_id, &s).await?;
+        tracker.update_work_item_state(&wi_id, &s).await?;
     }
 
     println!("Work Item #{} updated.", updated.id);
@@ -87,7 +88,9 @@ pub async fn update(
 
 pub async fn complete() -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -97,10 +100,9 @@ pub async fn complete() -> Result<()> {
         _ => return Err(anyhow!("Already on baseline — nothing to complete.")),
     };
 
-    let wi = ado.get_work_item(wi_id).await?;
-    let pr = ado
-        .get_pull_request_by_branch(&config.ado.project, &branch)
-        .await?;
+    let wi = tracker.get_work_item(&wi_id).await?;
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
 
     if let Some(p) = pr {
         if p.status != "completed" && p.status != "abandoned" {

@@ -1,13 +1,17 @@
 use crate::core::config::Config;
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::sonar::SonarProvider;
-use crate::providers::{IssueTracker, VCSProvider};
+use crate::providers::VCSProvider;
 use anyhow::Result;
 use std::process::Command;
 
 pub async fn run(fix: bool) -> Result<()> {
     let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
+
     println!("## Flow Manager Doctor\n");
 
     // 1. Check Git
@@ -22,9 +26,9 @@ pub async fn run(fix: bool) -> Result<()> {
     );
 
     // 2. Check Providers
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
-    let ado_check = ado.get_repository(&config.ado.project).await.is_ok();
-    println!("| ADO   | {} |", if ado_check { "✓" } else { "✗" });
+    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let provider_check = vcs.get_repository(&repo_name).await.is_ok();
+    println!("| Provider | {} |", if provider_check { "✓" } else { "✗" });
 
     if let Some(sonar_config) = &config.sonar {
         let _sonar = SonarProvider::new(sonar_config)?;
@@ -58,7 +62,7 @@ pub async fn run(fix: bool) -> Result<()> {
         {
             println!("Detected activity for WI #{}", wi_id);
             // 1. Ensure WI is Active
-            ado.update_work_item_state(wi_id, "Active").await?;
+            tracker.update_work_item_state(&wi_id, "Active").await?;
 
             // 2. Ensure Branch and PR links exist
             // (Logic to fetch branch URL and PR URL and call ado.create_artifact_link)

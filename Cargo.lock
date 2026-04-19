@@ -402,6 +402,8 @@ dependencies = [
  "config",
  "dotenvy",
  "mockito",
+ "once_cell",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
