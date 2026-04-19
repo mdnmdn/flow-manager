@@ -14,11 +14,6 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Manage work activities
-    Work {
-        #[command(subcommand)]
-        command: WorkCommands,
-    },
     /// Manage the current activity
     Task {
         #[command(subcommand)]
@@ -147,7 +142,7 @@ pub enum Commands {
 }
 
 #[derive(Subcommand)]
-pub enum WorkCommands {
+pub enum TaskCommands {
     /// Create a WI, branch, and draft PR, then switch locally
     // SPECIFICATION:
     // 1. Create ADO WI (User Story/Bug).
@@ -192,7 +187,7 @@ pub enum WorkCommands {
     //    - Create remote branch/PR if missing (idempotency).
     //    - Set WI Active.
     //    - git fetch && git checkout branch.
-    //    - Restore stash named stash-{wi-id}-*.
+    //    - Restore stash named stash-{wi-id}-staged / stash-{wi-id}-unstaged.
     Load {
         /// WI id, PR id, or branch name
         id: String,
@@ -217,22 +212,15 @@ pub enum WorkCommands {
         #[arg(long, default_value_t = 20)]
         max: i32,
     },
-}
-
-#[derive(Subcommand)]
-pub enum TaskCommands {
     /// Pause the current activity
     // SPECIFICATION:
     // 1. If baseline: exit.
     // 2. Check git status.
-    // 3. If dirty and no flags: prompt for --stash or --force.
-    // 4. If --stash: git stash push -m "stash-{wi-id}-{slug}".
-    // 5. git push, then switch to baseline.
+    // 3. If dirty: auto-stash (staged to stash-{wi-id}-staged, unstaged to stash-{wi-id}-unstaged).
+    //    Use --force to discard instead of stashing.
+    // 4. git push, then switch to baseline.
     Hold {
-        /// Stash uncommitted changes
-        #[arg(long)]
-        stash: bool,
-        /// Discard uncommitted changes
+        /// Discard uncommitted changes instead of stashing
         #[arg(long)]
         force: bool,
         /// Stay on the current branch

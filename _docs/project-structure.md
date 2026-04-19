@@ -10,61 +10,98 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 .
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs          # CLI entry point, handles global flags and subcommand routing
-│   ├── cli/             # CLI definition using clap
+│   ├── main.rs                   # CLI entry point, subcommand routing
+│   ├── lib.rs                    # Library entry point (re-exports cli, commands, core, providers)
+│   ├── cli/
+│   │   └── mod.rs                # Full CLI definition using clap (Commands, TaskCommands, PrCommands, …)
+│   ├── commands/                 # Command implementations organised by root command
 │   │   ├── mod.rs
-│   │   ├── porcelain.rs # User-facing command definitions
-│   │   └── plumbing.rs  # Low-level command definitions
-│   ├── commands/        # Command implementations organized by root command
+│   │   ├── context.rs            # fm context
+│   │   ├── commit.rs             # fm commit
+│   │   ├── push.rs               # fm push
+│   │   ├── sync.rs               # fm sync
+│   │   ├── sonar.rs              # fm sonar
+│   │   ├── doctor.rs             # fm doctor
+│   │   ├── init.rs               # fm init [--discover]
+│   │   ├── work/
+│   │   │   └── mod.rs            # fm task new / load / list (implementation)
+│   │   ├── task/
+│   │   │   └── mod.rs            # fm task hold / update / sync / complete
+│   │   ├── pr/
+│   │   │   └── mod.rs            # fm pr show / update / merge / review
+│   │   ├── todo/
+│   │   │   └── mod.rs            # fm todo show / new / pick / complete / reopen / update / next
+│   │   ├── pipeline/
+│   │   │   └── mod.rs            # fm pipeline run / status
+│   │   └── plumbing/
+│   │       ├── mod.rs
+│   │       ├── git.rs            # fm plumbing git …
+│   │       └── ado.rs            # fm plumbing ado …
+│   ├── core/                     # Core business logic and shared models
 │   │   ├── mod.rs
-│   │   ├── work/        # fm work ...
-│   │   ├── task/        # fm task ...
-│   │   ├── pr/          # fm pr ...
-│   │   ├── todo/        # fm todo ...
-│   │   ├── pipeline/    # fm pipeline ...
-│   │   └── plumbing/    # low-level primitives
-│   ├── core/            # Core business logic and shared models
-│   │   ├── mod.rs
-│   │   ├── context.rs   # Workspace/Activity context management
-│   │   ├── models.rs    # Domain entities (WorkItem, PullRequest, etc.)
-│   │   └── error.rs     # Error handling
-│   ├── providers/       # Interface and implementations for external services
-│   │   ├── mod.rs
-│   │   ├── adonet.rs    # Azure DevOps REST API client
-│   │   ├── git.rs       # Local Git command wrapper
-│   │   └── sonar.rs     # SonarQube API client
-│   └── lib.rs           # Library entry point
-├── _docs/               # Project documentation
-│   ├── porcelain-commands-proposal.md
-│   └── project-structure.md
-└── agents.md            # Agent instructions and project overview
+│   │   ├── config.rs             # Config loading (TOML/YAML/env via `config` crate)
+│   │   ├── context.rs            # Context detection, ID resolution, branch derivation, output formatting
+│   │   ├── models.rs             # Domain entities: WorkItem, PullRequest, Pipeline, …
+│   │   └── error.rs              # Shared error types
+│   └── providers/                # Traits and implementations for external services
+│       ├── mod.rs                # IssueTracker, VCSProvider, PipelineProvider, QualityProvider traits
+│       ├── factory.rs            # ProviderSet: builds concrete providers from Config
+│       ├── adonet.rs             # Azure DevOps REST API (issue tracker + VCS + pipeline)
+│       ├── git.rs                # LocalGitProvider: local git operations via subprocess
+│       └── sonar.rs              # SonarQube API client
+├── _docs/                        # Project documentation
+│   ├── flow-manager-behaviours.md          # authoritative command reference
+│   ├── component-specification.md
+│   ├── config-structure.md
+│   ├── project-structure.md      # this file
+│   ├── provider-evolutions-extensibilities.md
+│   ├── github-provider-analysis.md
+│   ├── gitlab-provider-analysis.md
+│   └── bitbucket-provider-analysis.md
+└── AGENTS.md                     # Agent instructions and project overview
 ```
 
 ## Architectural Layers
 
 ### 1. CLI Layer (`src/cli/`)
-Uses `clap` to define the command-line interface.
-- **Porcelain Commands:** High-level commands like `fm work new`, `fm sync`, `fm task hold`. These focus on developer intent.
-- **Plumbing Commands:** Low-level commands that expose raw provider capabilities. Useful for debugging or scripts.
+
+Uses `clap` derive macros to define the full command-line interface in a single `mod.rs`.
+
+- **Porcelain commands:** `Task`, `Pr`, `Todo`, `Pipeline`, `Context`, `Commit`, `Push`, `Sync`, `Sonar`, `Doctor`, `Init`
+- **Plumbing commands:** nested under `Plumbing` — direct access to Git and ADO primitives
+
+All `fm task new/load/list` (work item lifecycle) and `fm task hold/update/sync/complete` (activity lifecycle) are routed through the same `Task` subcommand.
 
 ### 2. Command Layer (`src/commands/`)
-Implements the logic for each CLI command, organized into subdirectories matching the main command groups.
-- High-level commands orchestrate multiple provider calls.
-- Ensures idempotency as described in the proposal.
+
+Implements the logic for each CLI command. `main.rs` dispatches into these functions; they orchestrate provider calls and format output.
+
+- `work/mod.rs` implements `new`, `load`, `list` (routed from `fm task new/load/list`)
+- `task/mod.rs` implements `hold`, `update`, `sync`, `complete`
+- All other commands have a dedicated file or subdirectory
 
 ### 3. Core Layer (`src/core/`)
-Contains the "brain" of the application.
-- **Context Model:** Derives the current state (Baseline vs. Activity) from the environment (branch name, ADO links).
-- **Domain Models:** Shared data structures that represent work items, PRs, etc., independent of the provider's raw JSON format.
+
+The "brain" of the application — provider-agnostic logic.
+
+- **`config.rs`:** loads `fm.toml` / `fm.yaml` / env vars via the `config` crate; `ProviderConfig` uses a plain struct with a `kind` field (`"ado"`, `"github"`, `"gitlab"`) and optional sub-configs
+- **`context.rs`:** derives Baseline vs. Activity context from the branch name; resolves ambiguous IDs (`w-123`, `pr-123`, plain numbers); slugifies titles for branch names; formats output via Handlebars templates
+- **`models.rs`:** shared domain structs (`WorkItem`, `PullRequest`, `Pipeline`, `PipelineRun`, `QualityIssue`, …)
 
 ### 4. Provider Layer (`src/providers/`)
-Handles communication with external systems.
-- Defines traits (interfaces) for services like `IssueTracker`, `VCSProvider`, `PipelineManager`.
-- Currently focuses on **Azure DevOps** as the primary provider, but designed to be extensible for GitHub, GitLab, etc.
+
+Handles communication with external systems behind shared traits.
+
+- **`mod.rs`** defines: `IssueTracker`, `VCSProvider`, `PipelineProvider`, `QualityProvider`
+- **`factory.rs`** (`ProviderSet`): reads `Config.provider.kind` and constructs the concrete provider set
+- **`adonet.rs`**: Azure DevOps implementation of `IssueTracker`, `VCSProvider`, and `PipelineProvider`
+- **`git.rs`** (`LocalGitProvider`): implements `VCSProvider` local operations (checkout, stash, push, fetch, …) plus utility methods not on the trait: `get_repo_name()`, `find_branch_for_wi()`, `has_staged_changes()`, `stash_push_staged()`, `stash_pop_named()`
+- **`sonar.rs`**: implements `QualityProvider` against SonarQube REST API
 
 ## Design Principles
 
-- **Idempotency:** Every command can be safely re-run.
-- **Provider Agnostic Core:** The core logic should not depend on Azure DevOps-specific details where possible.
-- **Transparent Submodule Handling:** Automatic management of the `_docs` submodule.
-- **Non-Interactive:** Designed for both humans and AI agents.
+- **Idempotency:** every command can be safely re-run; state-creating operations check for existing state first
+- **Provider-agnostic core:** `src/core/` has no dependency on ADO-specific types
+- **Transparent submodule handling:** `fm commit`, `fm push`, `fm sync` detect and handle the `_docs` submodule automatically
+- **Non-interactive:** designed for humans, AI agents, and CI scripts; exits non-zero with structured messages on error
+- **Dual-stash hold/restore:** `fm task hold --stash` preserves staged and unstaged changes as separate named stashes (`stash-{wi-id}-staged`, `stash-{wi-id}-unstaged`); `fm task load` restores them in the correct positions

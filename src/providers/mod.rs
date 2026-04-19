@@ -57,6 +57,7 @@ pub trait VCSProvider {
         branch: &str,
     ) -> Result<Option<PullRequest>>;
     async fn get_pull_request_details(&self, repository: &str, id: &str) -> Result<PullRequest>;
+    #[allow(clippy::too_many_arguments)]
     async fn create_pull_request(
         &self,
         repository: &str,

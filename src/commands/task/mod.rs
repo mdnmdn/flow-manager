@@ -5,35 +5,33 @@ use crate::providers::git::LocalGitProvider;
 use crate::providers::VCSProvider;
 use anyhow::{anyhow, Result};
 
-pub async fn hold(stash: bool, force: bool, stay: bool) -> Result<()> {
+pub async fn hold(force: bool, stay: bool) -> Result<()> {
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
 
-    let (wi_id, slug) = match context {
+    let wi_id = match context {
         Context::Baseline { .. } => {
             println!("Already on baseline, nothing to hold.");
             return Ok(());
         }
-        Context::Activity { wi_id, branch, .. } => {
-            let slug = branch.split('/').next_back().unwrap_or("activity");
-            (wi_id, slug.to_string())
-        }
+        Context::Activity { wi_id, .. } => wi_id,
     };
 
     let status = git.get_status().await?;
     if !status.is_empty() {
-        if stash {
-            let stash_msg = format!("stash-{}-{}", wi_id, slug);
-            git.stash_push(&stash_msg).await?;
-        } else if force {
+        if force {
             git.discard_local_changes().await?;
         } else {
-            println!(
-                "Uncommitted changes present. Use `--stash` to save them or `--force` to discard."
-            );
-            println!("{}", status);
-            return Err(anyhow!("Working tree dirty"));
+            let stash_base = format!("stash-{}-", wi_id);
+            if git.has_staged_changes()? {
+                git.stash_push_staged(&format!("{}staged", stash_base)).await?;
+            }
+            let remaining = git.get_status().await?;
+            if !remaining.is_empty() {
+                git.stash_push(&format!("{}unstaged", stash_base)).await?;
+            }
+            println!("Stashed changes as `{}`.", stash_base);
         }
     }
 

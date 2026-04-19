@@ -7,8 +7,8 @@ async fn main() -> anyhow::Result<()> {
     let cli = cli::parse();
 
     match cli.command {
-        cli::Commands::Work { command } => match command {
-            cli::WorkCommands::New {
+        cli::Commands::Task { command } => match command {
+            cli::TaskCommands::New {
                 title,
                 description,
                 branch,
@@ -30,17 +30,15 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?
             }
-            cli::WorkCommands::Load { id, target } => commands::work::load(id, target).await?,
-            cli::WorkCommands::List {
+            cli::TaskCommands::Load { id, target } => commands::work::load(id, target).await?,
+            cli::TaskCommands::List {
                 mine,
                 state,
                 type_name,
                 max,
             } => commands::work::list(mine, state, type_name, max).await?,
-        },
-        cli::Commands::Task { command } => match command {
-            cli::TaskCommands::Hold { stash, force, stay } => {
-                commands::task::hold(stash, force, stay).await?
+            cli::TaskCommands::Hold { force, stay } => {
+                commands::task::hold(force, stay).await?
             }
             cli::TaskCommands::Update {
                 title,

@@ -8,6 +8,47 @@ use crate::providers::VCSProvider;
 pub struct LocalGitProvider;
 
 impl LocalGitProvider {
+    pub fn has_staged_changes(&self) -> Result<bool> {
+        let output = self.run_git(&["diff", "--cached", "--name-only"])?;
+        Ok(!output.is_empty())
+    }
+
+    pub async fn stash_push_staged(&self, message: &str) -> Result<()> {
+        self.run_git(&["stash", "push", "--staged", "-m", message])?;
+        Ok(())
+    }
+
+    pub async fn stash_pop_named(&self, name: &str, restore_index: bool) -> Result<()> {
+        let list = self.run_git(&["stash", "list"])?;
+        let stash_ref = list
+            .lines()
+            .find(|line| line.contains(name))
+            .and_then(|line| line.split(':').next())
+            .map(|r| r.trim().to_string());
+
+        if let Some(stash_ref) = stash_ref {
+            let mut args = vec!["stash", "pop"];
+            if restore_index {
+                args.push("--index");
+            }
+            args.push(&stash_ref);
+            self.run_git(&args)?;
+        }
+        Ok(())
+    }
+
+    pub fn find_branch_for_wi(&self, wi_id: &str) -> Result<Option<String>> {
+        let output = self.run_git(&["branch", "-r"])?;
+        let pattern = format!("/{}-", wi_id);
+        for line in output.lines() {
+            let branch = line.trim().trim_start_matches("origin/");
+            if branch.contains(&pattern) {
+                return Ok(Some(branch.to_string()));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn get_repo_name(&self) -> Result<String> {
         let remote_url = self.run_git(&["remote", "get-url", "origin"])?;
         let name = remote_url

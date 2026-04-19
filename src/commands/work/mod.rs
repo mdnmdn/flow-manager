@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::context::{Context, ContextManager, IdResolution, OutputFormatter};
+use crate::core::context::{ContextManager, IdResolution, OutputFormatter};
 use crate::core::models::{WorkItemFilter, WorkItemId};
 use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
@@ -147,31 +147,35 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let branch_name = match ContextManager::detect(&id) {
-        Context::Activity { branch, .. } => branch,
-        _ => ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type),
-    };
-
-    // Check if branch exists, if not error out (as per user instructions to use doctor --fix)
-    // Actually, user said "abort on most command, leave only some 'main' command to fix"
-    // So here I should check if I can checkout.
-
     git.fetch().await?;
+
+    let branch_name = git
+        .find_branch_for_wi(wi.id.as_str())?
+        .unwrap_or_else(|| ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type));
+
     if let Err(e) = git.checkout_branch(&branch_name).await {
-        return Err(anyhow!("Branch `{}` not found locally or remotely. Run `fm doctor --fix` if you believe this is an error.\nError: {}", branch_name, e));
+        return Err(anyhow!(
+            "Branch `{}` not found locally or remotely.\nError: {}",
+            branch_name,
+            e
+        ));
     }
 
     // Ensure Active
     tracker.update_work_item_state(&wi.id, "Active").await?;
 
-    // Stash restoration
-    let stash_name = format!("stash-{}-", wi.id);
+    // Stash restoration: pop unstaged first, then re-stage the staged stash
+    let stash_base = format!("stash-{}-", wi.id);
     let stashes = git.run_git(&["stash", "list"])?;
-    for line in stashes.lines() {
-        if line.contains(&stash_name) {
-            println!("Restoring stash...");
-            git.stash_pop().await?;
-            break;
+    let has_unstaged = stashes.lines().any(|l| l.contains(&format!("{}unstaged", stash_base)));
+    let has_staged = stashes.lines().any(|l| l.contains(&format!("{}staged", stash_base)));
+    if has_unstaged || has_staged {
+        println!("Restoring stash...");
+        if has_unstaged {
+            git.stash_pop_named(&format!("{}unstaged", stash_base), false).await?;
+        }
+        if has_staged {
+            git.stash_pop_named(&format!("{}staged", stash_base), true).await?;
         }
     }
 

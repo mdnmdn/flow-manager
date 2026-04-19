@@ -1,0 +1,752 @@
+# Flow Manager — Behaviour Reference
+
+This document is the authoritative description of every `fm` command: what it does, the steps it performs, and the output it produces. It reflects the current implementation.
+
+---
+
+## 1. Concepts
+
+### Context model
+
+At any point the developer is in one of two contexts:
+
+| Context | Description |
+|---------|-------------|
+| **Baseline** | On a protected/shared branch (`main`, `develop`). No active work item. |
+| **Activity** | On a `feature/*` or `fix/*` branch. Linked to a WI, a remote branch, and a draft PR. |
+
+The **current branch is the source of truth** for the active context. `fm` reads the branch name to derive the work item ID and activity type.
+
+### Branch naming
+
+```
+feature/{wi-id}-{short-slug}    ← User Story (feature)
+fix/{wi-id}-{short-slug}        ← Bug
+```
+
+Examples:
+```
+feature/73235-pipeline-list-workflow-script
+fix/73100-login-redirect-loop
+```
+
+`{wi-id}` is the work item ID from the issue tracker. `{short-slug}` is kebab-case derived from the WI title or supplied via `--branch`.
+
+### Activity invariants
+
+When in **Activity** context, the following must always be true:
+
+1. A WI exists and is **Active**.
+2. A remote branch exists (same name as local).
+3. A **draft or active PR** exists, linked to the WI and targeting the baseline branch.
+4. The WI links record both the branch and the PR as artifacts.
+
+`fm task new` and `fm task load` both enforce and repair these invariants.
+
+### Idempotency
+
+Every `fm` command is idempotent. Running it twice produces the same result as running it once:
+
+- If a WI already exists with the expected title and type → reuse it, do not create a duplicate.
+- If the remote branch already exists → do not error; use it.
+- If a PR already exists for the branch → do not create a second one; use the existing one.
+- If a link already exists on the WI → skip creation, do not duplicate.
+- If a state transition is already in the desired state → succeed silently.
+- If a stash with the expected name already exists → succeed silently (do not re-stash).
+
+### ID disambiguation
+
+Several commands accept a generic `<id>` argument:
+
+| Format | Resolution |
+|--------|------------|
+| `76987698` (plain number) | Try as both PR id and WI id. |
+| `w-123`, `wi-123`, `w123` | Force WI lookup only. |
+| `pr-123`, `p-123` | Force PR lookup only. |
+| `feature/123-slug`, `fix/123-slug` | Extract WI id from branch name. |
+
+### Global options
+
+- `--format markdown|json` — output format (default: `markdown`).
+
+---
+
+## 2. Configuration
+
+### `fm init`
+
+```
+fm init
+  [--path <file>]     output path (default: fm.toml in current directory)
+  [--discover]        auto-detect provider from .env and git remote
+```
+
+Without `--discover`: writes a commented TOML template to the output path and exits. Refuses to overwrite an existing file.
+
+With `--discover`:
+1. Reads `.env` in the current directory for known keys (`ADO_PAT`, `ADO_URL`, `ADO_PROJECT`, `SONAR_URL`, `SONAR_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, etc.).
+2. Runs `git remote get-url origin` to detect the provider from the URL pattern:
+   - `dev.azure.com` or `visualstudio.com` → ADO
+   - `github.com` → GitHub
+   - `gitlab.com` → GitLab
+3. Reads `.gitmodules` to detect submodule paths.
+4. Writes a pre-filled `fm.toml` from the discovered values.
+
+### Config file
+
+Configuration is resolved by merging sources in order of increasing precedence:
+
+1. Built-in defaults
+2. Config file (`fm.toml`, `fm.yaml`, or any format supported by the `config` crate)
+3. `.env` file (loaded via `dotenvy`)
+4. Environment variables (prefix `FM__`, double underscore for nesting)
+
+#### Provider (`[provider]`)
+
+```toml
+[provider]
+type = "ado"          # "ado" | "github" | "gitlab"
+
+[provider.ado]
+url     = "https://dev.azure.com/your-org"
+project = "your-project"
+pat     = "YOUR_PAT_HERE"
+```
+
+#### Workflow defaults (`[fm]`)
+
+```toml
+[fm]
+merge_strategy = "squash"      # squash | rebase | rebaseMerge | noFastForward
+default_target = "main"
+submodules     = ["_docs"]     # paths managed transparently by fm commit/push/sync
+```
+
+#### SonarQube (`[sonar]`, optional)
+
+```toml
+[sonar]
+url   = "https://sonar.example.com"
+token = "YOUR_SONAR_TOKEN_HERE"
+```
+
+#### Environment variable mapping
+
+| Config key | Environment variable |
+|---|---|
+| `provider.ado.pat` | `FM__PROVIDER__ADO__PAT` |
+| `provider.github.token` | `FM__PROVIDER__GITHUB__TOKEN` |
+| `fm.default_target` | `FM__FM__DEFAULT_TARGET` |
+| `sonar.token` | `FM__SONAR__TOKEN` |
+
+---
+
+## 3. Activity lifecycle (`fm task`)
+
+### `fm task new`
+
+**Goal:** Create a new work item, remote branch, and draft PR in one step, then switch locally to the new branch.
+
+```
+fm task new
+  --title <title>                   (required)
+  [--description <text>]
+  [--branch <slug>]                 branch name suffix; defaults to slugified title
+  [--type feature|fix]              default: feature  →  User Story / Bug
+  [--target <base-branch>]          default: fm.default_target
+  [--assigned-to <email>]
+  [--tags <tag1;tag2>]
+  [--sonar-project <key>]
+```
+
+**Steps:**
+
+1. Create WI (`User Story` for `feature`, `Bug` for `fix`) with title, description, tags.
+2. If `--sonar-project`: fetch open Sonar issues and append to WI description.
+3. Derive branch name: `{type}/{wi-id}-{slug}`.
+4. Create remote branch from `--target` via the VCS provider.
+5. Create draft PR linked to the WI, targeting `--target` (`workItemRefs` set at creation time).
+6. Set WI state → **Active**.
+7. `git fetch && git checkout {branch}`.
+
+**Output:**
+
+```markdown
+## New Activity Started
+
+| | |
+|-|---|
+| Work Item | #73240 — login flow implementation |
+| Type      | User Story |
+| State     | Active |
+| Branch    | `feature/73240-login-flow` |
+| PR        | #15650 (draft) |
+| Target    | `main` |
+```
+
+**Errors:**
+- If the branch already exists remotely: error "branch already exists — use `fm task load`".
+
+---
+
+### `fm task load`
+
+**Goal:** Resume an existing work item. Repairs missing branch or PR if needed, restores any stashed work, and switches to the activity branch.
+
+```
+fm task load <id>
+  [--target <base-branch>]
+```
+
+`<id>` accepts: WI id, branch name, or any disambiguated format (see §1).
+
+**Steps:**
+
+1. Resolve `<id>` to a WI.
+2. **If WI is Closed/Done:** print summary and exit — no branch switch.
+3. **If WI is Active or New:**
+   a. Scan `git branch -r` for any branch matching `/{wi-id}-`; fall back to deriving the name from WI id and title.
+   b. `git fetch && git checkout {branch}`.
+   c. Set WI state → **Active** if not already.
+   d. Restore stashes if present:
+      - Pop `stash-{wi-id}-unstaged` first (normal working-tree changes).
+      - Pop `stash-{wi-id}-staged` with `--index` to re-stage those files.
+
+**Errors:**
+- Branch not found locally or remotely: error with branch name.
+- Stash conflict on restore: conflict message printed; stash left intact for manual resolution.
+
+---
+
+### `fm task list`
+
+**Goal:** List work items filtered by state, type, and assignee.
+
+```
+fm task list
+  [--mine]                  filter by current user
+  [--state <state>]         default: Active
+  [--type feature|fix|all]  default: all
+  [--max <n>]               default: 20
+```
+
+Outputs a Markdown table: `ID | Type | State | Title | Assigned To`.
+
+---
+
+### `fm task hold`
+
+**Goal:** Safely pause the current activity, push committed work, and return to the baseline branch.
+
+```
+fm task hold
+  [--stash]     stash uncommitted changes before holding
+  [--force]     discard uncommitted changes (destructive)
+  [--stay]      stay on the current branch after hold
+```
+
+**Steps:**
+
+1. If on **baseline**: print "Already on baseline, nothing to hold." and exit.
+2. Check `git status`.
+3. **If working tree is clean:** `git push`, switch to baseline (unless `--stay`).
+4. **If dirty and no flag:** print status and error "Uncommitted changes present. Use `--stash` to save them or `--force` to discard."
+5. **`--stash`:** save as two named stashes, then push, then switch to baseline:
+   - If staged changes exist: `git stash push --staged -m "stash-{wi-id}-staged"`
+   - If unstaged changes remain: `git stash push -m "stash-{wi-id}-unstaged"`
+6. **`--force`:** `git checkout -- .`, then push, then switch to baseline.
+
+**Output:**
+
+```markdown
+## Task Hold
+
+| | |
+|-|---|
+| Branch pushed | `feature/73240-login-flow` |
+| Stash         | `stash-73240-staged` + `stash-73240-unstaged` saved |
+| Now on        | `main` |
+```
+
+---
+
+### `fm task update`
+
+**Goal:** Update the WI linked to the current activity.
+
+```
+fm task update
+  [--title <title>]
+  [--state <state>]
+  [--description <text>]
+  [--assigned-to <email>]
+  [--tags <tag1;tag2>]
+```
+
+Derives WI from current branch. Errors if on baseline. Applies requested fields via the issue tracker PATCH API.
+
+---
+
+### `fm task sync`
+
+**Goal:** Update the current activity branch with commits from the baseline (merge or rebase).
+
+```
+fm task sync
+  [--rebase]    use rebase instead of merge (default: merge)
+  [--check]     dry-run: show commits behind/ahead without modifying
+```
+
+**Steps:**
+
+1. Error if on baseline.
+2. `git fetch origin`.
+3. **`--check`:** compare HEAD against `origin/{target}`, print divergence summary, exit.
+4. **Merge (default):** `git merge origin/{target}`.
+5. **`--rebase`:** `git rebase origin/{target}`.
+6. On conflict: print git output and recovery instructions, exit non-zero.
+7. On clean: `git push`.
+
+**Recovery instructions (on conflict):**
+
+```
+Conflicts detected. Resolve them with git directly:
+  git status
+  # edit files to resolve conflicts
+  git add <resolved-files>
+  git rebase --continue   ← if --rebase
+  git merge --continue    ← if merge
+  fm push
+```
+
+---
+
+### `fm task complete`
+
+**Goal:** Verify the activity is fully done (WI closed, PR merged or abandoned) and return to an updated baseline.
+
+```
+fm task complete
+```
+
+**Steps:**
+
+1. Error if on baseline.
+2. Fetch WI state and linked PR state.
+3. Error if PR is still active/draft — merge or publish it first.
+4. Switch to `default_target`, `git pull`.
+
+---
+
+## 4. Pull Requests (`fm pr`)
+
+### `fm pr show [<id>]`
+
+**Goal:** Display PR details for the current or a specified context.
+
+```
+fm pr show [<id>]
+```
+
+No `<id>` → uses current branch PR. `<id>` resolved via disambiguation rules (§1).
+
+**Output:**
+
+```markdown
+## PR #15650 — login flow implementation
+
+| Field  | Value |
+|--------|-------|
+| State  | draft |
+| Draft  | true |
+| Source | `feature/73240-login-flow` |
+| Target | `main` |
+```
+
+---
+
+### `fm pr update`
+
+**Goal:** Update the PR linked to the current activity.
+
+```
+fm pr update
+  [--title <title>]
+  [--description <text>]
+  [--publish]                    remove draft status
+  [--status active|abandoned|completed]
+  [--add-reviewer <email>]       repeatable
+```
+
+Derives PR from current branch. Prints `PR #{id} updated.` on success.
+
+---
+
+### `fm pr merge`
+
+**Goal:** Complete the PR linked to the current activity using the configured merge strategy.
+
+```
+fm pr merge
+  [--strategy squash|rebase|rebaseMerge|noFastForward]
+  [--delete-source-branch]
+  [--bypass-policy]
+```
+
+**Steps:**
+
+1. Error if on baseline.
+2. Error if PR is still a draft — publish it first.
+3. Apply merge strategy (default: `fm.merge_strategy`).
+4. Complete the PR via the VCS provider.
+5. Set WI state → **Closed**.
+
+**Merge strategies:**
+
+| Strategy | Description |
+|----------|-------------|
+| `squash` | All commits squashed into one (default) |
+| `rebase` | Rebase source commits onto target, no merge commit |
+| `rebaseMerge` | Rebase + merge commit |
+| `noFastForward` | Standard merge commit, always created |
+
+---
+
+### `fm pr review <id>`
+
+**Goal:** Temporarily switch to another PR's branch to review it, safely pausing the current activity first.
+
+```
+fm pr review <id>
+```
+
+**Steps:**
+
+1. If in **Activity** context with dirty working tree: auto-stash (`stash-{wi-id}-staged` / `stash-{wi-id}-unstaged`) and push.
+2. If clean: push and switch.
+3. Resolve `<id>` to a PR.
+4. `git fetch && git checkout {pr-branch}`.
+
+**Resuming after review:**
+
+```bash
+fm task load <original-wi-id>    # restores stash and switches back
+```
+
+---
+
+## 5. Todos (`fm todo`)
+
+Child Tasks linked to the current User Story.
+
+### Todo resolution (`<ref>`)
+
+1. **Exact numeric ID** — direct lookup, validated as child of current WI.
+2. **Title substring** (case-insensitive) — searches within current WI's children.
+   - One match: use it.
+   - Multiple matches: list them and exit non-zero.
+   - No match: error with suggestion to run `fm todo show`.
+
+---
+
+### `fm todo show`
+
+```
+fm todo show
+  [--all]      include closed/done items
+  [--detail]   show description under each item
+```
+
+Errors if on baseline. Groups by state: Active first, then New, then Closed (only with `--all`).
+
+**Output:**
+
+```markdown
+## Todos — #73240: login flow implementation
+
+  ●  #73243  add tests                    Active
+  ○  #73241  implement login UI
+  ○  #73244  update documentation
+
+  ─────────────────────────────────────────
+  0 done · 1 active · 2 open · 3 total
+```
+
+Legend: `●` Active · `○` New · `✓` Closed
+
+---
+
+### `fm todo new`
+
+```
+fm todo new
+  --title <title>
+  [--description <text>]
+  [--assigned-to <email>]
+  [--pick]                 set Active immediately
+```
+
+Creates a Task linked as a child of the current WI.
+
+---
+
+### `fm todo pick <ref>`
+
+Sets the referenced todo to **Active**.
+
+---
+
+### `fm todo complete <ref>`
+
+Sets the referenced todo to **Closed**.
+
+---
+
+### `fm todo reopen <ref>`
+
+Sets the referenced todo back to **New**.
+
+---
+
+### `fm todo update <ref>`
+
+```
+fm todo update <ref>
+  [--title <title>]
+  [--description <text>]
+  [--assigned-to <email>]
+  [--state <state>]
+```
+
+---
+
+### `fm todo next`
+
+```
+fm todo next
+  [--pick]    set Active immediately
+```
+
+Shows the first New todo (by creation order). Suggests `fm task complete` if all todos are closed.
+
+---
+
+## 6. Pipelines (`fm pipeline`)
+
+### `fm pipeline run`
+
+```
+fm pipeline run
+  [--id <pipeline-id>]
+```
+
+Triggers a CI pipeline run on the current branch. If `--id` is omitted: prints the pipeline list and exits non-zero — caller must re-run with `--id`.
+
+---
+
+### `fm pipeline status`
+
+```
+fm pipeline status
+  [--run-id <id>]
+  [--watch]         poll every 30s until completed
+```
+
+Shows the latest CI run status for the current branch. `--run-id` to inspect a specific run.
+
+---
+
+## 7. Source control
+
+### `fm commit`
+
+```
+fm commit
+  [--message <msg>]        auto-generated from WI context if omitted
+  [--all]                  stage all tracked changes before committing
+  [--amend]                amend the last commit
+  [--docs-message <msg>]   override submodule commit message
+  [--no-docs]              skip submodule handling
+```
+
+**Submodule detection (applied unless `--no-docs`):**
+
+| Submodule state | Action |
+|-----------------|--------|
+| Clean, up to date | Skip |
+| Uncommitted changes | `git add -A` + commit in submodule, then push |
+| Unpushed commits only | Push submodule only |
+| Both | Commit then push submodule |
+
+After any submodule push, the parent repo's pointer is staged and included in the main commit.
+
+**Auto-generated message** (when `--message` omitted, Activity context):
+```
+[#{wi-id}] {wi-title}: <summary>
+```
+
+---
+
+### `fm push`
+
+```
+fm push
+  [--force]     use --force-with-lease
+  [--no-docs]   skip submodule push check
+```
+
+Checks submodule for unpushed commits (same detection as `fm commit`), pushes submodule first if needed, then pushes the current branch.
+
+---
+
+### `fm sync`
+
+```
+fm sync
+  [--message <msg>]
+  [--docs-message <msg>]
+```
+
+Shorthand for `fm commit --all` + `fm push`. If nothing to commit: prints "Nothing to commit. Working tree clean."
+
+---
+
+## 8. Quality
+
+### `fm sonar`
+
+```
+fm sonar
+  [--project <key>]
+  [--severity <levels>]    e.g. MAJOR,CRITICAL,BLOCKER
+  [--max <n>]              default: 20
+```
+
+Lists open SonarQube issues for a project. Requires `[sonar]` config to be present.
+
+---
+
+## 9. Context
+
+### `fm context`
+
+```
+fm context
+  [--only-wi]
+  [--only-pr]
+  [--only-git]
+  [--only-pipeline]
+```
+
+**Baseline branch:** prints branch name and last commits.
+
+**Activity branch:** fetches and displays:
+- WI details (id, title, state, assigned to)
+- PR details (state, draft, target branch)
+- Git status (ahead/behind, local changes)
+- Latest CI pipeline run
+
+**Output (activity):**
+
+```markdown
+## Context — `feature/73240-login-flow`
+
+### Work Item
+| ID    | #73240 |
+| Title | login flow implementation |
+| State | Active |
+
+### Pull Request
+| PR     | #15650 |
+| State  | draft |
+| Target | `main` |
+
+### Git
+| Ahead  | 3 commits |
+| Behind | 0 commits |
+| Local  | clean |
+```
+
+---
+
+## 10. Diagnostics
+
+### `fm doctor`
+
+```
+fm doctor
+  [--fix]    attempt to repair broken invariants
+```
+
+Checks and reports:
+- Git installed and inside a git repository
+- VCS provider reachable (calls `get_repository`)
+- SonarQube config present and buildable
+- Configured submodule paths exist
+
+With `--fix` and in Activity context: sets WI state to Active and attempts to repair missing artifact links.
+
+---
+
+## 11. Typical workflows
+
+### Start a new feature
+
+```bash
+fm task new --title "login flow implementation" --branch "login-flow" --sonar-project my-project
+# → WI created, branch created, draft PR created, WI Active, local branch checked out
+```
+
+### Daily loop
+
+```bash
+fm context                    # understand where you are
+
+# ... write code ...
+
+fm sync --message "wip: auth service"   # commit + push, submodule handled transparently
+fm task sync --check                    # check drift from main
+fm task sync --rebase                   # sync with main
+
+fm task hold                            # push and switch to baseline
+fm task load 73240                      # next morning: restore context
+```
+
+### Parallel review
+
+```bash
+fm pr review 15700            # stash current work, switch to review branch
+fm task load 73240            # back to your work, stash restored
+```
+
+### Completing work
+
+```bash
+fm pr update --publish        # remove draft
+fm pipeline run --id 614      # trigger CI
+fm pipeline status --watch    # watch CI
+fm pr merge                   # merge (uses fm.merge_strategy)
+fm task complete              # switch to main and pull
+```
+
+---
+
+## 12. Scope
+
+`fm` covers the ~80% of daily workflow that is repetitive and automatable.
+
+| Scenario | Command |
+|----------|---------|
+| Start new work | `fm task new` |
+| Resume existing work | `fm task load` |
+| Understand current state | `fm context` |
+| Save and pause work | `fm task hold` / `fm sync` |
+| Commit with submodule handling | `fm commit` / `fm sync` |
+| Manage todos | `fm todo *` |
+| Keep branch up to date | `fm task sync [--rebase]` |
+| Publish PR for review | `fm pr update --publish` |
+| Merge PR | `fm pr merge` |
+| Trigger and watch CI | `fm pipeline run` / `fm pipeline status` |
+| Finalise and return to baseline | `fm task complete` |
+
+The remaining ~20% — conflict resolution, cherry-picks, interactive rebase, bulk WI queries, policy bypasses — is handled directly with `git`, the provider's CLI, or the web UI. `fm` never hides errors from these underlying layers.
