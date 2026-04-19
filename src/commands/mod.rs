@@ -1,7 +1,8 @@
 pub mod commit;
-pub mod init;
+pub mod common;
 pub mod context;
 pub mod doctor;
+pub mod init;
 pub mod pipeline;
 pub mod plumbing;
 pub mod pr;

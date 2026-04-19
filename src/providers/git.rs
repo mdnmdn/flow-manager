@@ -2,7 +2,9 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::process::Command;
 
-use crate::core::models::{MergeStrategy, ProviderCapabilities, PullRequest, Repository, WorkItemId};
+use crate::core::models::{
+    MergeStrategy, ProviderCapabilities, PullRequest, Repository, WorkItemId,
+};
 use crate::providers::VCSProvider;
 
 pub struct LocalGitProvider;
@@ -59,7 +61,10 @@ impl LocalGitProvider {
             .trim_end_matches(".git")
             .to_string();
         if name.is_empty() {
-            return Err(anyhow!("Could not determine repository name from remote URL: {}", remote_url));
+            return Err(anyhow!(
+                "Could not determine repository name from remote URL: {}",
+                remote_url
+            ));
         }
         Ok(name)
     }

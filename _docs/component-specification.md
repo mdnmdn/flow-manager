@@ -76,15 +76,41 @@ This document breaks down the high-level commands into low-level features and fu
 
 ## 7. Context and Output (`src/core/context.rs`) [COMPLETED]
 
-- `ContextManager::detect(branch)`: Returns `Context::Baseline` or `Context::Activity { wi_id, branch }`.
+- `ContextManager::detect(branch)`: Returns `Context::Baseline` or `Context::Activity { wi_id, branch }`. When the branch name does not match the `feature/{id}-slug` regex, falls back to `BranchCache::load_for_branch` before returning `Baseline`.
 - `ContextManager::resolve_id(input)`: Disambiguates `w-123`, `pr-123`, plain numbers, and branch names into `IdResolution` variants.
 - `ContextManager::derive_branch_name(wi_id, title, type)`: Produces `feature/{id}-{slug}` or `fix/{id}-{slug}`.
 - `OutputFormatter::format(data, format, template)`: Renders a struct as Markdown (via Handlebars template) or JSON.
 
-## 8. Internal Coordination (commands layer)
+## 8. Branch Cache (`src/core/branch_cache.rs`) [COMPLETED]
+
+Provides a lightweight per-repository hint file so that branches with non-conventional names are still recognized as Activity context.
+
+**Cache file location:** `$TMPDIR/fm_branch_{hash}.json`
+The `{hash}` is an FNV-1a 64-bit hash of the git repository root path, scoping the cache to the current repo.
+
+**Data stored:**
+```json
+{ "branch": "some-branch", "wi_id": "12345", "wi_type": "feature" }
+```
+
+**API:**
+- `BranchCache::save(branch, wi_id, wi_type)`: Write (or overwrite) the cache for the current repo.
+- `BranchCache::load_for_branch(branch) -> Option<BranchCache>`: Read the cache and return it only if the stored branch matches the given branch exactly and `wi_id` is non-empty; returns `None` otherwise (stale or missing).
+- `BranchCache::clear()`: Delete the cache file (silently ignores missing file).
+
+**Lifecycle (managed by commands):**
+
+| Command | Action |
+|---------|--------|
+| `fm task new` — after checkout | `save` |
+| `fm task load` — after checkout | `save` |
+| `fm task hold` — before baseline switch | `clear` |
+| `fm task complete` — before baseline switch | `clear` |
+
+## 9. Internal Coordination (commands layer)
 
 - **ID disambiguation:** `ContextManager::resolve_id` covers WI IDs, PR IDs, branch names, and ambiguous plain numbers.
-- **Stash lifecycle:** `fm task hold --stash` saves `stash-{wi-id}-staged` (index only) and `stash-{wi-id}-unstaged` (working tree); `fm task load` restores both in order, re-staging the staged stash with `--index`.
+- **Stash lifecycle:** `fm task hold` auto-stashes by default — `stash-{wi-id}-staged` (index only via `--staged`) and `stash-{wi-id}-unstaged` (remaining working-tree changes); `--force` discards instead. `fm task load` restores both in order, re-staging the staged stash with `--index`.
 - **Idempotency:** state-creating operations (`create_branch`, `create_pull_request`, `create_work_item`) check for existing resources before creating; duplicate links and state transitions are silently skipped.
 - **Submodule transparency:** `fm commit`, `fm push`, and `fm sync` detect pending `_docs` changes and commit/push the submodule before the parent repo.
 - **Todo resolution:** `fm todo` commands accept a numeric task ID or a case-insensitive title fragment scoped to the current WI's children.

@@ -1,3 +1,5 @@
+use crate::commands::common::stash_and_push_current_activity;
+use crate::core::branch_cache::BranchCache;
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager};
 use crate::providers::factory::ProviderSet;
@@ -8,34 +10,21 @@ use anyhow::{anyhow, Result};
 pub async fn hold(force: bool, stay: bool) -> Result<()> {
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
-    let context = ContextManager::detect(&branch);
 
-    let wi_id = match context {
-        Context::Baseline { .. } => {
-            println!("Already on baseline, nothing to hold.");
-            return Ok(());
-        }
-        Context::Activity { wi_id, .. } => wi_id,
-    };
+    if let Context::Baseline { .. } = ContextManager::detect(&branch) {
+        println!("Already on baseline, nothing to hold.");
+        return Ok(());
+    }
 
-    let status = git.get_status().await?;
-    if !status.is_empty() {
-        if force {
+    if force {
+        let status = git.get_status().await?;
+        if !status.is_empty() {
             git.discard_local_changes().await?;
-        } else {
-            let stash_base = format!("stash-{}-", wi_id);
-            if git.has_staged_changes()? {
-                git.stash_push_staged(&format!("{}staged", stash_base)).await?;
-            }
-            let remaining = git.get_status().await?;
-            if !remaining.is_empty() {
-                git.stash_push(&format!("{}unstaged", stash_base)).await?;
-            }
-            println!("Stashed changes as `{}`.", stash_base);
         }
     }
 
-    git.push(false).await?;
+    stash_and_push_current_activity(&git).await?;
+    BranchCache::clear();
 
     if !stay {
         let config = Config::load()?;
@@ -124,6 +113,7 @@ pub async fn complete() -> Result<()> {
 
     git.checkout_branch(&config.fm.default_target).await?;
     git.pull().await?;
+    BranchCache::clear();
 
     println!("Activity complete. Now on `{}`", config.fm.default_target);
     Ok(())

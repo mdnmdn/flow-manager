@@ -13,10 +13,9 @@ pub struct ProviderSet {
 
 impl ProviderSet {
     pub fn from_config(config: &Config) -> Result<Self> {
-        let provider = config
-            .provider
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No [provider] section in config. Run `fm init` to create one."))?;
+        let provider = config.provider.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("No [provider] section in config. Run `fm init` to create one.")
+        })?;
 
         match provider.kind.as_str() {
             "ado" => {
@@ -34,7 +33,10 @@ impl ProviderSet {
             }
             "github" => todo!("GitHub provider not yet implemented"),
             "gitlab" => todo!("GitLab provider not yet implemented"),
-            other => bail!("Unknown provider type '{}'. Expected: ado, github, gitlab", other),
+            other => bail!(
+                "Unknown provider type '{}'. Expected: ado, github, gitlab",
+                other
+            ),
         }
     }
 }

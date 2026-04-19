@@ -15,7 +15,7 @@ At any point the developer is in one of two contexts:
 | **Baseline** | On a protected/shared branch (`main`, `develop`). No active work item. |
 | **Activity** | On a `feature/*` or `fix/*` branch. Linked to a WI, a remote branch, and a draft PR. |
 
-The **current branch is the source of truth** for the active context. `fm` reads the branch name to derive the work item ID and activity type.
+The **current branch is the source of truth** for the active context. `fm` reads the branch name to derive the work item ID and activity type. For branches that do not follow the naming convention, `fm` falls back to a [branch cache](#branch-cache).
 
 ### Branch naming
 
@@ -42,6 +42,27 @@ When in **Activity** context, the following must always be true:
 4. The WI links record both the branch and the PR as artifacts.
 
 `fm task new` and `fm task load` both enforce and repair these invariants.
+
+### Branch cache
+
+When a work item is loaded whose linked branch does not follow the `feature/{id}-slug` / `fix/{id}-slug` convention (e.g. a branch created externally), `fm` cannot derive the WI ID from the branch name alone. To handle this, `fm task load` and `fm task new` write a small JSON hint to a per-repository temporary file:
+
+```
+$TMPDIR/fm_branch_{repo-hash}.json
+```
+
+The file stores the exact branch name, WI ID, and activity type (`feature` or `fix`). `ContextManager::detect` reads it as a fallback after the regex miss, accepting it only when the stored branch name matches the current branch exactly.
+
+**Cache lifecycle:**
+
+| Event | Action |
+|-------|--------|
+| `fm task new` or `fm task load` — after checkout | Cache written |
+| `fm task hold` — before switching to baseline | Cache cleared |
+| `fm task complete` — before switching to baseline | Cache cleared |
+| Current branch ≠ cached branch | Cache ignored (stale) |
+
+The `{repo-hash}` is an FNV-1a hash of the git repository root path, so separate repositories on the same machine never share a cache entry.
 
 ### Idempotency
 
@@ -207,8 +228,9 @@ fm task load <id>
 3. **If WI is Active or New:**
    a. Scan `git branch -r` for any branch matching `/{wi-id}-`; fall back to deriving the name from WI id and title.
    b. `git fetch && git checkout {branch}`.
-   c. Set WI state → **Active** if not already.
-   d. Restore stashes if present:
+   c. Write branch cache (`branch → wi_id`) so non-conventional branch names are recognized by later commands.
+   d. Set WI state → **Active** if not already.
+   e. Restore stashes if present:
       - Pop `stash-{wi-id}-unstaged` first (normal working-tree changes).
       - Pop `stash-{wi-id}-staged` with `--index` to re-stage those files.
 
@@ -240,8 +262,7 @@ Outputs a Markdown table: `ID | Type | State | Title | Assigned To`.
 
 ```
 fm task hold
-  [--stash]     stash uncommitted changes before holding
-  [--force]     discard uncommitted changes (destructive)
+  [--force]     discard uncommitted changes instead of stashing (destructive)
   [--stay]      stay on the current branch after hold
 ```
 
@@ -249,23 +270,19 @@ fm task hold
 
 1. If on **baseline**: print "Already on baseline, nothing to hold." and exit.
 2. Check `git status`.
-3. **If working tree is clean:** `git push`, switch to baseline (unless `--stay`).
-4. **If dirty and no flag:** print status and error "Uncommitted changes present. Use `--stash` to save them or `--force` to discard."
-5. **`--stash`:** save as two named stashes, then push, then switch to baseline:
+3. **If dirty and `--force`:** `git checkout -- .` (changes discarded).
+4. **If dirty (default — auto-stash):** save as two named stashes:
    - If staged changes exist: `git stash push --staged -m "stash-{wi-id}-staged"`
    - If unstaged changes remain: `git stash push -m "stash-{wi-id}-unstaged"`
-6. **`--force`:** `git checkout -- .`, then push, then switch to baseline.
+5. `git push`.
+6. Clear branch cache.
+7. Switch to baseline (unless `--stay`).
 
 **Output:**
 
-```markdown
-## Task Hold
-
-| | |
-|-|---|
-| Branch pushed | `feature/73240-login-flow` |
-| Stash         | `stash-73240-staged` + `stash-73240-unstaged` saved |
-| Now on        | `main` |
+```
+Stashed changes as `stash-73240-`.
+Moved to baseline `main`
 ```
 
 ---
@@ -335,6 +352,7 @@ fm task complete
 2. Fetch WI state and linked PR state.
 3. Error if PR is still active/draft — merge or publish it first.
 4. Switch to `default_target`, `git pull`.
+5. Clear branch cache.
 
 ---
 

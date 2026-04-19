@@ -537,6 +537,45 @@ impl IssueTracker for AzureDevOpsProvider {
 
         Ok(vec![])
     }
+
+    async fn get_linked_branch_names(&self, id: &WorkItemId) -> Result<Vec<String>> {
+        let url = self.v(&format!(
+            "{}/wit/workitems/{}?$expand=relations",
+            self.base_api_url(),
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+        let branches = body["relations"]
+            .as_array()
+            .map(|rels| {
+                rels.iter()
+                    .filter_map(|r| {
+                        if r["rel"].as_str()? != "ArtifactLink" {
+                            return None;
+                        }
+                        parse_branch_from_vstfs(r["url"].as_str()?)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(branches)
+    }
+}
+
+/// Parse a branch name from an ADO vstfs artifact URL.
+/// Format: `vstfs:///Git/Ref/{projectId}%2F{repoId}%2FGB{branchName}`
+/// where `{branchName}` has `/` encoded as `%2F`.
+fn parse_branch_from_vstfs(url: &str) -> Option<String> {
+    let suffix = url.split_once("Git/Ref/")?.1;
+    // The branch segment is the last %2F-separated token, prefixed with "GB"
+    let parts: Vec<&str> = suffix.split("%2F").collect();
+    let last = parts.last()?;
+    let encoded = last.strip_prefix("GB")?;
+    Some(encoded.replace("%2F", "/"))
 }
 
 #[cfg(test)]

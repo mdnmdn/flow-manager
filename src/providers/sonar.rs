@@ -3,6 +3,7 @@ use crate::core::models::QualityIssue;
 use crate::providers::QualityProvider;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use base64::Engine;
 use reqwest::{header, Client};
 use serde_json::Value;
 
@@ -14,8 +15,9 @@ pub struct SonarProvider {
 impl SonarProvider {
     pub fn new(config: &SonarConfig) -> Result<Self> {
         let mut headers = header::HeaderMap::new();
-        let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", config.token))?;
-        auth_value.set_sensitive(true);
+        let credentials = format!("{}:", config.token);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);
+        let auth_value = header::HeaderValue::from_str(&format!("Basic {}", encoded))?;
         headers.insert(header::AUTHORIZATION, auth_value);
 
         let client = Client::builder().default_headers(headers).build()?;

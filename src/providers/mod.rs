@@ -42,7 +42,13 @@ pub trait IssueTracker {
 
     // Optional: providers that don't need this can return an empty vec
     async fn available_states(&self, _id: &WorkItemId) -> Result<Vec<String>> {
-        Ok(vec![]) // default implementation
+        Ok(vec![])
+    }
+
+    /// Return branch names linked to the WI as artifact links (e.g. from `vstfs:///Git/Ref/…`).
+    /// Default returns empty; providers that support artifact links should override.
+    async fn get_linked_branch_names(&self, _id: &WorkItemId) -> Result<Vec<String>> {
+        Ok(vec![])
     }
 }
 

@@ -7,7 +7,8 @@
       "Bash(./target/debug/fm init *)",
       "Bash(rm fm.toml)",
       "Bash(cargo clippy *)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(cargo fmt *)"
     ]
   }
 }

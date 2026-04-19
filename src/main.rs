@@ -37,9 +37,7 @@ async fn main() -> anyhow::Result<()> {
                 type_name,
                 max,
             } => commands::work::list(mine, state, type_name, max).await?,
-            cli::TaskCommands::Hold { force, stay } => {
-                commands::task::hold(force, stay).await?
-            }
+            cli::TaskCommands::Hold { force, stay } => commands::task::hold(force, stay).await?,
             cli::TaskCommands::Update {
                 title,
                 state,

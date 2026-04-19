@@ -1,3 +1,4 @@
+use crate::core::branch_cache::BranchCache;
 use crate::core::models::WorkItemId;
 use anyhow::Result;
 use once_cell::sync::Lazy;
@@ -28,6 +29,14 @@ impl ContextManager {
                 branch: branch.to_string(),
                 wi_id: WorkItemId(caps[2].to_string()),
                 wi_type: caps[1].to_string(),
+            };
+        }
+        // Fall back to temporary cache written by `fm task load` for non-conventional branches.
+        if let Some(hint) = BranchCache::load_for_branch(branch) {
+            return Context::Activity {
+                branch: branch.to_string(),
+                wi_id: hint.wi_id,
+                wi_type: hint.wi_type,
             };
         }
         Context::Baseline {

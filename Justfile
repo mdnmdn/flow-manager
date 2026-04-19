@@ -44,6 +44,11 @@ update:
 # Run all checks (fmt, lint, test)
 check: fmt lint test
 
+# CI check: verify formatting and clippy (no changes)
+ci-check:
+	cargo fmt --all -- --check
+	cargo clippy -- -D warnings
+
 # Watch for changes and run tests (requires cargo-watch)
 watch-test:
 	cargo watch -x test
@@ -71,4 +76,4 @@ docs-update:
 docs-status:
 	git submodule status
 
-.PHONY: build test test-v fmt lint run run-help clean outdated update check watch-test watch-lint init docs-update docs-status
+.PHONY: build test test-v fmt lint run run-help clean outdated update check watch-test watch-lint init docs-update docs-status ci-check

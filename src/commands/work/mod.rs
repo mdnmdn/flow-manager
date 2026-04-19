@@ -1,3 +1,5 @@
+use crate::commands::common::stash_and_push_current_activity;
+use crate::core::branch_cache::BranchCache;
 use crate::core::config::Config;
 use crate::core::context::{ContextManager, IdResolution, OutputFormatter};
 use crate::core::models::{WorkItemFilter, WorkItemId};
@@ -108,6 +110,12 @@ pub async fn run(
     // 8. Local checkout
     git.fetch().await?;
     git.checkout_branch(&branch_name).await?;
+    let cache_wi_type = if wi.work_item_type == "Bug" {
+        "fix"
+    } else {
+        "feature"
+    };
+    BranchCache::save(&branch_name, &wi.id, cache_wi_type);
 
     let result = WorkNewResult {
         wi_id: wi.id,
@@ -147,11 +155,32 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
         return Ok(());
     }
 
+    stash_and_push_current_activity(&git).await?;
+    BranchCache::clear();
+
     git.fetch().await?;
 
-    let branch_name = git
-        .find_branch_for_wi(wi.id.as_str())?
-        .unwrap_or_else(|| ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type));
+    let branch_name = match git.find_branch_for_wi(wi.id.as_str())? {
+        Some(b) => b,
+        None => {
+            // Fall back to artifact links stored in the issue tracker.
+            let remote_branches = git.run_git(&["branch", "-r"])?;
+            let linked = tracker
+                .get_linked_branch_names(&wi.id)
+                .await
+                .unwrap_or_default();
+            linked
+                .into_iter()
+                .find(|b| {
+                    remote_branches
+                        .lines()
+                        .any(|l| l.trim().trim_start_matches("origin/") == b)
+                })
+                .unwrap_or_else(|| {
+                    ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type)
+                })
+        }
+    };
 
     if let Err(e) = git.checkout_branch(&branch_name).await {
         return Err(anyhow!(
@@ -160,6 +189,13 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
             e
         ));
     }
+    // Write branch→WI hint so context detection works even for non-conventional branch names.
+    let cache_wi_type = if wi.work_item_type == "Bug" {
+        "fix"
+    } else {
+        "feature"
+    };
+    BranchCache::save(&branch_name, &wi.id, cache_wi_type);
 
     // Ensure Active
     tracker.update_work_item_state(&wi.id, "Active").await?;
@@ -167,15 +203,21 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     // Stash restoration: pop unstaged first, then re-stage the staged stash
     let stash_base = format!("stash-{}-", wi.id);
     let stashes = git.run_git(&["stash", "list"])?;
-    let has_unstaged = stashes.lines().any(|l| l.contains(&format!("{}unstaged", stash_base)));
-    let has_staged = stashes.lines().any(|l| l.contains(&format!("{}staged", stash_base)));
+    let has_unstaged = stashes
+        .lines()
+        .any(|l| l.contains(&format!("{}unstaged", stash_base)));
+    let has_staged = stashes
+        .lines()
+        .any(|l| l.contains(&format!("{}staged", stash_base)));
     if has_unstaged || has_staged {
         println!("Restoring stash...");
         if has_unstaged {
-            git.stash_pop_named(&format!("{}unstaged", stash_base), false).await?;
+            git.stash_pop_named(&format!("{}unstaged", stash_base), false)
+                .await?;
         }
         if has_staged {
-            git.stash_pop_named(&format!("{}staged", stash_base), true).await?;
+            git.stash_pop_named(&format!("{}staged", stash_base), true)
+                .await?;
         }
     }
 
