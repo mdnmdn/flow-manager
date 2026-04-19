@@ -65,6 +65,7 @@ pub trait VCSProvider {
         title: &str,
         description: &str,
         is_draft: bool,
+        work_item_refs: &[&WorkItemId],
     ) -> Result<PullRequest>;
     async fn update_pull_request(
         &self,

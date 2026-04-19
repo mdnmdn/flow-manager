@@ -13,7 +13,7 @@ pub async fn show(id: Option<String>) -> Result<()> {
     let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let repo_name = git.get_repo_name()?;
 
     let pr_id = if let Some(id_str) = id {
         match ContextManager::resolve_id(&id_str) {
@@ -90,7 +90,7 @@ pub async fn update(
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let repo_name = git.get_repo_name()?;
 
     let pr = vcs
         .get_pull_request_by_branch(&repo_name, &branch)
@@ -129,7 +129,7 @@ pub async fn merge(
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let repo_name = git.get_repo_name()?;
 
     let pr = vcs
         .get_pull_request_by_branch(&repo_name, &branch)
@@ -178,7 +178,7 @@ pub async fn review(id: String) -> Result<()> {
     let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let repo_name = git.get_repo_name()?;
 
     // 1. Pause current
     let current_branch = git.get_current_branch().await?;

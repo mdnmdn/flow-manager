@@ -1312,6 +1312,7 @@ impl VCSProvider for AzureDevOpsProvider {
         title: &str,
         description: &str,
         is_draft: bool,
+        work_item_refs: &[&WorkItemId],
     ) -> Result<PullRequest> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests",
@@ -1319,12 +1320,18 @@ impl VCSProvider for AzureDevOpsProvider {
             repository
         ));
 
+        let wi_refs: Vec<serde_json::Value> = work_item_refs
+            .iter()
+            .map(|id| json!({ "id": id.to_string() }))
+            .collect();
+
         let body = json!({
             "sourceRefName": self.normalize_ref(source),
             "targetRefName": self.normalize_ref(target),
             "title": title,
             "description": description,
-            "isDraft": is_draft
+            "isDraft": is_draft,
+            "workItemRefs": wi_refs
         });
 
         let resp = self.client.post(url).json(&body).send().await?;

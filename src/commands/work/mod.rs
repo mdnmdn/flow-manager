@@ -81,7 +81,7 @@ pub async fn run(
     };
 
     // 4. Create remote branch
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default(); // Simplification
+    let repo_name = git.get_repo_name()?;
     vcs.create_branch(&repo_name, &branch_name, &target_branch)
         .await?;
 
@@ -98,13 +98,14 @@ pub async fn run(
             &title,
             "PR created by fm",
             is_draft_supported,
+            &[&wi.id],
         )
         .await?;
 
     // 6. Set WI state to Active
     tracker.update_work_item_state(&wi.id, "Active").await?;
 
-    // 7. Local checkout
+    // 8. Local checkout
     git.fetch().await?;
     git.checkout_branch(&branch_name).await?;
 

@@ -133,6 +133,15 @@ pub enum Commands {
     /// Low-level plumbing commands
     #[command(subcommand)]
     Plumbing(PlumbingCommands),
+    /// Initialize a new configuration file
+    Init {
+        /// Output file path (default: fm.toml)
+        #[arg(long)]
+        path: Option<String>,
+        /// Discover config from .env file and git remote
+        #[arg(long)]
+        discover: bool,
+    },
     /// Show the current version
     Version,
 }

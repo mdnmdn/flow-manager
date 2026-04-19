@@ -2,17 +2,17 @@ use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ProviderConfig {
-    Ado(AdoConfig),
-    GitHub(GitHubConfig),
-    GitLab(GitLabConfig),
+pub struct ProviderConfig {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub ado: Option<AdoConfig>,
+    pub github: Option<GitHubConfig>,
+    pub gitlab: Option<GitLabConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub provider: Option<ProviderConfig>,
-    pub ado: Option<AdoConfig>, // For backward compatibility
     pub sonar: Option<SonarConfig>,
     pub fm: FmConfig,
 }
@@ -86,22 +86,6 @@ impl Config {
             .add_source(Environment::with_prefix("FM").separator("__"))
             .build()?;
 
-        // Backward compatibility logic
-        let mut config: Config = s.try_deserialize()?;
-        if config.provider.is_none() {
-            if let Some(ado) = &config.ado {
-                config.provider = Some(ProviderConfig::Ado(ado.clone()));
-            } else {
-                return Err(ConfigError::Message(
-                    "Missing provider configuration".into(),
-                ));
-            }
-        } else if let Some(ProviderConfig::Ado(ado)) = &config.provider {
-            if config.ado.is_none() {
-                config.ado = Some(ado.clone());
-            }
-        }
-
-        Ok(config)
+        s.try_deserialize()
     }
 }

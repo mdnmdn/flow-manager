@@ -1,4 +1,5 @@
 pub mod commit;
+pub mod init;
 pub mod context;
 pub mod doctor;
 pub mod pipeline;

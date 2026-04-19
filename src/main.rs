@@ -122,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
             max,
         } => commands::sonar::run(project, severity, max).await?,
         cli::Commands::Doctor { fix } => commands::doctor::run(fix).await?,
+        cli::Commands::Init { path, discover } => commands::init::run(path, discover).await?,
         cli::Commands::Plumbing(cmd) => match cmd {
             cli::PlumbingCommands::Git { command } => match command {
                 cli::GitPlumbingCommands::BranchCurrent => {

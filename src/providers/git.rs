@@ -2,12 +2,27 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::process::Command;
 
-use crate::core::models::{MergeStrategy, ProviderCapabilities, PullRequest, Repository};
+use crate::core::models::{MergeStrategy, ProviderCapabilities, PullRequest, Repository, WorkItemId};
 use crate::providers::VCSProvider;
 
 pub struct LocalGitProvider;
 
 impl LocalGitProvider {
+    pub fn get_repo_name(&self) -> Result<String> {
+        let remote_url = self.run_git(&["remote", "get-url", "origin"])?;
+        let name = remote_url
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(".git")
+            .to_string();
+        if name.is_empty() {
+            return Err(anyhow!("Could not determine repository name from remote URL: {}", remote_url));
+        }
+        Ok(name)
+    }
+
     pub fn run_git(&self, args: &[&str]) -> Result<String> {
         let output = Command::new("git").args(args).output()?;
 
@@ -47,6 +62,7 @@ impl VCSProvider for LocalGitProvider {
         _title: &str,
         _description: &str,
         _is_draft: bool,
+        _work_item_refs: &[&WorkItemId],
     ) -> Result<PullRequest> {
         Err(anyhow!("Not implemented for local git"))
     }

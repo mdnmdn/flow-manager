@@ -23,7 +23,7 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
             println!("\nLast commits:\n{}", log);
         }
         Context::Activity { branch, wi_id, .. } => {
-            let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+            let repo_name = git.get_repo_name()?;
             // Parallelize fetches
             let wi_fut = tracker.get_work_item(&wi_id);
             let pr_fut = vcs.get_pull_request_by_branch(&repo_name, &branch);

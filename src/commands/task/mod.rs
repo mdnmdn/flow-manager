@@ -101,7 +101,7 @@ pub async fn complete() -> Result<()> {
     };
 
     let wi = tracker.get_work_item(&wi_id).await?;
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let repo_name = git.get_repo_name()?;
     let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
 
     if let Some(p) = pr {

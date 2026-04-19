@@ -1,7 +1,7 @@
-use crate::core::config::{Config, ProviderConfig};
+use crate::core::config::Config;
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::{IssueTracker, PipelineProvider, QualityProvider, VCSProvider};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::sync::Arc;
 
 pub struct ProviderSet {
@@ -13,22 +13,28 @@ pub struct ProviderSet {
 
 impl ProviderSet {
     pub fn from_config(config: &Config) -> Result<Self> {
-        match config.provider.as_ref().unwrap() {
-            ProviderConfig::Ado(c) => {
+        let provider = config
+            .provider
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No [provider] section in config. Run `fm init` to create one."))?;
+
+        match provider.kind.as_str() {
+            "ado" => {
+                let c = provider
+                    .ado
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Missing [provider.ado] section in config"))?;
                 let ado = Arc::new(AzureDevOpsProvider::new(c)?);
                 Ok(ProviderSet {
                     issue_tracker: ado.clone(),
                     vcs: ado.clone(),
                     pipeline: Some(ado),
-                    quality: None, // Will be wired if Sonar is present
+                    quality: None,
                 })
             }
-            ProviderConfig::GitHub(_c) => {
-                todo!("GitHub provider not yet implemented")
-            }
-            ProviderConfig::GitLab(_c) => {
-                todo!("GitLab provider not yet implemented")
-            }
+            "github" => todo!("GitHub provider not yet implemented"),
+            "gitlab" => todo!("GitLab provider not yet implemented"),
+            other => bail!("Unknown provider type '{}'. Expected: ado, github, gitlab", other),
         }
     }
 }

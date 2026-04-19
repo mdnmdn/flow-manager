@@ -26,7 +26,8 @@ pub async fn run(fix: bool) -> Result<()> {
     );
 
     // 2. Check Providers
-    let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
+    let git = LocalGitProvider;
+    let repo_name = git.get_repo_name().unwrap_or_default();
     let provider_check = vcs.get_repository(&repo_name).await.is_ok();
     println!("| Provider | {} |", if provider_check { "✓" } else { "✗" });
 
@@ -37,7 +38,6 @@ pub async fn run(fix: bool) -> Result<()> {
     }
 
     // 3. Check Submodules
-    let git = LocalGitProvider;
     for sub in &config.fm.submodules {
         let exists = std::path::Path::new(sub).exists();
         println!(
