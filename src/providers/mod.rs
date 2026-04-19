@@ -1,12 +1,13 @@
 use crate::core::models::{
     MergeStrategy, Pipeline, PipelineRun, PullRequest, QualityIssue, Repository, WorkItem,
+    WorkItemFilter, WorkItemId,
 };
 use anyhow::Result;
 use async_trait::async_trait;
 
 #[async_trait]
 pub trait IssueTracker {
-    async fn get_work_item(&self, id: i32) -> Result<WorkItem>;
+    async fn get_work_item(&self, id: &WorkItemId) -> Result<WorkItem>;
     async fn create_work_item(
         &self,
         title: &str,
@@ -17,21 +18,29 @@ pub trait IssueTracker {
     ) -> Result<WorkItem>;
     async fn update_work_item(
         &self,
-        id: i32,
+        id: &WorkItemId,
         title: Option<&str>,
         description: Option<&str>,
         assigned_to: Option<&str>,
         tags: Option<Vec<&str>>,
     ) -> Result<WorkItem>;
-    async fn update_work_item_state(&self, id: i32, state: &str) -> Result<WorkItem>;
-    async fn query_work_items(&self, wiql: &str) -> Result<Vec<WorkItem>>;
-    async fn create_artifact_link(&self, wi_id: i32, url: &str) -> Result<()>;
-    async fn link_work_items(&self, source_id: i32, target_id: i32, relation: &str) -> Result<()>;
+    async fn update_work_item_state(&self, id: &WorkItemId, state: &str) -> Result<WorkItem>;
+    async fn query_work_items(&self, filter: &WorkItemFilter) -> Result<Vec<WorkItem>>;
+    async fn create_artifact_link(&self, wi_id: &WorkItemId, url: &str) -> Result<()>;
+    async fn link_work_items(
+        &self,
+        source_id: &WorkItemId,
+        target_id: &WorkItemId,
+        relation: &str,
+    ) -> Result<()>;
     async fn get_child_work_items(
         &self,
-        id: i32,
+        id: &WorkItemId,
         work_item_type: Option<&str>,
     ) -> Result<Vec<WorkItem>>;
+    async fn available_states(&self, _id: &WorkItemId) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
 }
 
 #[async_trait]
@@ -42,7 +51,7 @@ pub trait VCSProvider {
         repository: &str,
         branch: &str,
     ) -> Result<Option<PullRequest>>;
-    async fn get_pull_request_details(&self, repository: &str, id: i32) -> Result<PullRequest>;
+    async fn get_pull_request_details(&self, repository: &str, id: &str) -> Result<PullRequest>;
     async fn create_pull_request(
         &self,
         repository: &str,
@@ -55,7 +64,7 @@ pub trait VCSProvider {
     async fn update_pull_request(
         &self,
         repository: &str,
-        id: i32,
+        id: &str,
         title: Option<&str>,
         description: Option<&str>,
         is_draft: Option<bool>,
@@ -64,11 +73,11 @@ pub trait VCSProvider {
     async fn complete_pull_request(
         &self,
         repository: &str,
-        id: i32,
+        id: &str,
         strategy: MergeStrategy,
         delete_source_branch: bool,
     ) -> Result<()>;
-    async fn add_reviewer(&self, repository: &str, id: i32, reviewer_id: &str) -> Result<()>;
+    async fn add_reviewer(&self, repository: &str, id: &str, reviewer_id: &str) -> Result<()>;
 
     // Remote Branch/Repo Management
     async fn create_branch(&self, repository: &str, name: &str, source: &str) -> Result<()>;
@@ -98,9 +107,9 @@ pub trait VCSProvider {
 #[async_trait]
 pub trait PipelineProvider {
     async fn list_pipelines(&self) -> Result<Vec<Pipeline>>;
-    async fn run_pipeline(&self, pipeline_id: i32, branch: &str) -> Result<PipelineRun>;
+    async fn run_pipeline(&self, pipeline_id: &str, branch: &str) -> Result<PipelineRun>;
     async fn get_latest_run(&self, branch: &str) -> Result<Option<PipelineRun>>;
-    async fn get_run_status(&self, run_id: i32) -> Result<PipelineRun>;
+    async fn get_run_status(&self, run_id: &str) -> Result<PipelineRun>;
 }
 
 #[async_trait]
@@ -110,6 +119,27 @@ pub trait QualityProvider {
         project_key: &str,
         severity: Option<&str>,
     ) -> Result<Vec<QualityIssue>>;
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ProviderCapabilities {
+    pub draft_pull_requests: bool,
+    pub pipeline_support: bool,
+    pub work_item_hierarchy: bool,
+    pub formal_artifact_links: bool,
+    pub merge_strategies: Vec<MergeStrategy>,
+    pub work_item_relations: Vec<String>,
+}
+
+pub trait CapableProvider {
+    fn capabilities(&self) -> ProviderCapabilities;
+}
+
+pub struct ProviderSet {
+    pub issue_tracker: Box<dyn IssueTracker + Send + Sync>,
+    pub vcs: Box<dyn VCSProvider + Send + Sync>,
+    pub pipeline: Option<Box<dyn PipelineProvider + Send + Sync>>,
+    pub quality: Option<Box<dyn QualityProvider + Send + Sync>>,
 }
 
 pub mod adonet;

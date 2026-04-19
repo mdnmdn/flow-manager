@@ -3,9 +3,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
-    pub ado: AdoConfig,
+    pub provider: ProviderConfig,
     pub sonar: Option<SonarConfig>,
     pub fm: FmConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ProviderConfig {
+    Ado(AdoConfig),
+    Github(GitHubConfig),
+    Gitlab(GitLabConfig),
+    Atlassian(AtlassianConfig),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -13,6 +22,44 @@ pub struct AdoConfig {
     pub url: String,
     pub project: String,
     pub pat: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GitHubConfig {
+    pub token: String,
+    pub owner: String,
+    pub repo: String,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GitLabConfig {
+    pub token: String,
+    pub namespace: String,
+    pub project_id: Option<u64>,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AtlassianConfig {
+    pub jira: JiraConfig,
+    pub bitbucket: BitbucketConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct JiraConfig {
+    pub url: String,
+    pub email: String,
+    pub api_token: String,
+    pub project_key: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct BitbucketConfig {
+    pub workspace: String,
+    pub repo_slug: String,
+    pub token: String,
+    pub base_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -46,6 +93,13 @@ fn default_wi_type() -> String {
 }
 
 impl Config {
+    pub fn ado_config(&self) -> Option<&AdoConfig> {
+        match &self.provider {
+            ProviderConfig::Ado(c) => Some(c),
+            _ => None,
+        }
+    }
+
     pub fn load() -> Result<Self, ConfigError> {
         let s = ConfigLoader::builder()
             // Start with default values if any
@@ -57,7 +111,7 @@ impl Config {
             .add_source(File::with_name("fm").required(false))
             .add_source(File::with_name(".env").required(false))
             // Add configuration from environment variables (with a prefix like FM_)
-            // e.g. FM_ADO_URL will set ado.url
+            // e.g. FM_PROVIDER__TYPE will set provider.type
             .add_source(Environment::with_prefix("FM").separator("__"))
             .build()?;
 

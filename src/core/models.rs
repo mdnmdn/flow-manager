@@ -1,8 +1,38 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct WorkItemId(pub String);
+
+impl WorkItemId {
+    pub fn from_int(n: i64) -> Self {
+        WorkItemId(n.to_string())
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for WorkItemId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<i64> for WorkItemId {
+    fn from(n: i64) -> Self {
+        WorkItemId(n.to_string())
+    }
+}
+
+impl From<&str> for WorkItemId {
+    fn from(s: &str) -> Self {
+        WorkItemId(s.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkItem {
-    pub id: i32,
+    pub id: WorkItemId,
     pub title: String,
     pub work_item_type: String,
     pub state: String,
@@ -21,7 +51,7 @@ pub struct QualityIssue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
-    pub id: i32,
+    pub id: String,
     pub title: String,
     pub status: String,
     pub source_branch: String,
@@ -31,14 +61,14 @@ pub struct PullRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
-    pub id: i32,
+    pub id: String,
     pub name: String,
     pub folder: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineRun {
-    pub id: i32,
+    pub id: String,
     pub status: String,
     pub result: Option<String>,
     pub url: String,
@@ -71,4 +101,14 @@ impl std::fmt::Display for MergeStrategy {
         };
         write!(f, "{}", s)
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct WorkItemFilter {
+    pub state: Option<String>,
+    pub assigned_to_me: bool,
+    pub work_item_type: Option<String>,
+    pub text: Option<String>,
+    pub milestone: Option<String>,
+    pub limit: Option<u32>,
 }

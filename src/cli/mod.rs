@@ -338,7 +338,7 @@ pub enum PipelineCommands {
     Run {
         /// Pipeline definition ID
         #[arg(long)]
-        id: Option<i32>,
+        id: Option<String>,
     },
     /// Show pipeline status for the current branch
     // SPECIFICATION:
@@ -347,7 +347,7 @@ pub enum PipelineCommands {
     Status {
         /// Run ID
         #[arg(long)]
-        run_id: Option<i32>,
+        run_id: Option<String>,
         /// Poll until completed
         #[arg(long)]
         watch: bool,
@@ -457,7 +457,7 @@ pub enum GitPlumbingCommands {
 #[derive(Subcommand)]
 pub enum AdoPlumbingCommands {
     /// Get work item
-    WiGet { id: i32 },
+    WiGet { id: String },
 }
 
 pub fn parse() -> Cli {

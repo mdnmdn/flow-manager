@@ -56,7 +56,10 @@ pub async fn update(
     tags: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -70,7 +73,7 @@ pub async fn update(
 
     let updated = ado
         .update_work_item(
-            wi_id,
+            &wi_id,
             title.as_deref(),
             description.as_deref(),
             assigned_to.as_deref(),
@@ -78,7 +81,7 @@ pub async fn update(
         )
         .await?;
     if let Some(s) = state {
-        ado.update_work_item_state(wi_id, &s).await?;
+        ado.update_work_item_state(&wi_id, &s).await?;
     }
 
     println!("Work Item #{} updated.", updated.id);
@@ -87,7 +90,10 @@ pub async fn update(
 
 pub async fn complete() -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -97,9 +103,9 @@ pub async fn complete() -> Result<()> {
         _ => return Err(anyhow!("Already on baseline — nothing to complete.")),
     };
 
-    let wi = ado.get_work_item(wi_id).await?;
+    let wi = ado.get_work_item(&wi_id).await?;
     let pr = ado
-        .get_pull_request_by_branch(&config.ado.project, &branch)
+        .get_pull_request_by_branch(&ado_config.project, &branch)
         .await?;
 
     if let Some(p) = pr {
@@ -113,8 +119,6 @@ pub async fn complete() -> Result<()> {
     }
 
     if wi.state != "Closed" && wi.state != "Done" {
-        // Silently close if PR is merged? The spec says error if not closed.
-        // Let's be strict.
         return Err(anyhow!(
             "Work Item #{} is still {}. Close it first.",
             wi.id,
