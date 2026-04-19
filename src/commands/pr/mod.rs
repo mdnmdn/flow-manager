@@ -1,12 +1,12 @@
 use crate::core::config::Config;
-use crate::core::context::{Context, ContextManager, IdResolution, OutputFormatter};
+use crate::core::context::{Context, ContextManager, IdResolution};
 use crate::core::models::MergeStrategy;
 use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::VCSProvider;
 use anyhow::{anyhow, Result};
 
-pub async fn show(id: Option<String>) -> Result<()> {
+pub async fn show(id: Option<String>, include_comments: bool, compact: bool) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;
@@ -67,12 +67,29 @@ pub async fn show(id: Option<String>) -> Result<()> {
     };
 
     let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
+    let pr_comments = vcs.get_pull_request_comments(&repo_name, &pr_id).await.unwrap_or_default();
 
-    let template = "## PR #{{id}} — {{title}}\n\n| Field | Value |\n|---|---|\n| State | {{status}} |\n| Draft | {{is_draft}} |\n| Source | `{{source_branch}}` |\n| Target | `{{target_branch}}` |\n";
-    println!(
-        "{}",
-        OutputFormatter::format(&pr, "markdown", Some(template))?
-    );
+    let comments_count = pr_comments.len() as i32;
+
+    if compact {
+        let draft = if pr.is_draft { "draft" } else { "active" };
+        println!("#{} [{}] - {}", pr.id, draft, pr.title);
+        println!("{} -> {}", pr.source_branch, pr.target_branch);
+        println!("Comments: {}", comments_count);
+        return Ok(());
+    }
+
+    println!("## {} [{}] - {}", pr.id, pr.status, pr.title);
+    println!("\n{} -> {}", pr.source_branch, pr.target_branch);
+
+    if include_comments {
+        for comment in pr_comments {
+            let date = comment.created_at_date.as_deref().unwrap_or("");
+            let time = comment.created_at_time.as_deref().unwrap_or("");
+            println!("\n### {} {} - {}", date, time, comment.author);
+            println!("\n{}", comment.content);
+        }
+    }
 
     Ok(())
 }
@@ -205,5 +222,47 @@ pub async fn review(id: String) -> Result<()> {
     git.checkout_branch(&target_branch).await?;
 
     println!("Now reviewing PR #{} on branch `{}`", pr.id, target_branch);
+    Ok(())
+}
+
+pub async fn comment(id: Option<String>, message: String) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let vcs = provider_set.vcs;
+    let git = LocalGitProvider;
+    let tracker = provider_set.issue_tracker;
+
+    let repo_name = git.get_repo_name()?;
+
+    let pr_id = if let Some(id_str) = id {
+        match ContextManager::resolve_id(&id_str) {
+            IdResolution::PullRequest(id) => id,
+            IdResolution::WorkItem(wi_id) => {
+                let wi = tracker.get_work_item(&wi_id).await?;
+                let branch_name = ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                pr.ok_or_else(|| anyhow!("No PR found for WI"))?.id
+            }
+            IdResolution::Ambiguous(id) => {
+                if let Ok(p) = vcs.get_pull_request_details(&repo_name, id.as_str()).await {
+                    p.id
+                } else {
+                    let wi = tracker.get_work_item(&id).await?;
+                    let branch_name = ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                    let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                    pr.ok_or_else(|| anyhow!("No PR found"))?.id
+                }
+            }
+            _ => return Err(anyhow!("Invalid ID")),
+        }
+    } else {
+        let branch = git.get_current_branch().await?;
+        let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
+        pr.ok_or_else(|| anyhow!("No PR found for current branch"))?.id
+    };
+
+    vcs.add_pull_request_comment(&repo_name, &pr_id, &message).await?;
+    println!("Comment added to PR #{}", pr_id);
+
     Ok(())
 }

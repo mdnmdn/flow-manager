@@ -46,7 +46,7 @@ pub enum Commands {
     Context {
         /// Show only work item details
         #[arg(long)]
-        only_wi: bool,
+        only_task: bool,
         /// Show only PR details
         #[arg(long)]
         only_pr: bool,
@@ -56,6 +56,9 @@ pub enum Commands {
         /// Show only pipeline details
         #[arg(long)]
         only_pipeline: bool,
+        /// Show comments for the current work item
+        #[arg(long)]
+        task_comments: bool,
     },
     /// Commit changes, handling the docs submodule transparently
     // SPECIFICATION:
@@ -205,6 +208,29 @@ pub enum TaskCommands {
         #[arg(long, default_value_t = 20)]
         max: i32,
     },
+    /// Show work item details
+    // SPECIFICATION:
+    // Display detailed work item information, optionally with comments.
+    // Without id: shows the current activity work item (error if not in Activity context).
+    Show {
+        /// WI id, PR id, or branch name (optional, uses current context if omitted)
+        id: Option<String>,
+        /// Hide comments (default: show comments)
+        #[arg(long)]
+        no_comments: bool,
+        /// Show compact format (id, status, title, comments count, branch, PR)
+        #[arg(long)]
+        compact: bool,
+    },
+    /// Add a comment to the current work item
+    // SPECIFICATION:
+    // 1. Derive WI from current branch.
+    // 2. Add comment via the issue tracker API.
+    Comment {
+        /// Comment text
+        #[arg(long)]
+        message: String,
+    },
     /// Pause the current activity
     // SPECIFICATION:
     // 1. If baseline: exit.
@@ -270,6 +296,22 @@ pub enum PrCommands {
     Show {
         /// PR id, WI id, or branch
         id: Option<String>,
+        /// Hide comments (default: show comments)
+        #[arg(long)]
+        no_comments: bool,
+        /// Show compact format (id, status, title, comments count)
+        #[arg(long)]
+        compact: bool,
+    },
+    /// Add a comment to a PR
+    // SPECIFICATION:
+    // Add a comment to the PR.
+    Comment {
+        /// PR id, WI id, or branch (optional, uses current context if omitted)
+        id: Option<String>,
+        /// Comment text
+        #[arg(long)]
+        message: String,
     },
     /// Update the PR linked to the current activity
     // SPECIFICATION:

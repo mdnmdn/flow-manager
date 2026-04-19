@@ -215,11 +215,11 @@ fm task new
 **Goal:** Resume an existing work item. Repairs missing branch or PR if needed, restores any stashed work, and switches to the activity branch.
 
 ```
-fm task load <id>
+fm task load <task>
   [--target <base-branch>]
 ```
 
-`<id>` accepts: WI id, branch name, or any disambiguated format (see §1).
+`<task>` accepts: WI id, branch name, or any disambiguated format (see §1).
 
 **Steps:**
 
@@ -237,6 +237,78 @@ fm task load <id>
 **Errors:**
 - Branch not found locally or remotely: error with branch name.
 - Stash conflict on restore: conflict message printed; stash left intact for manual resolution.
+
+---
+
+### `fm task show`
+
+**Goal:** Display detailed information about a work item, optionally including comments.
+
+```
+fm task show <task>
+  [--comments]    show comments for the work item
+```
+
+`<task>` accepts: WI id, branch name, or any disambiguated format (see §1). Without `--comments`: shows basic WI information.
+
+**Parallel fetching:** The WI details and comments are fetched in parallel when `--comments` is specified.
+
+**Output (basic):**
+
+```markdown
+## Work Item #73240 — login flow implementation
+
+| Field   | Value |
+|--------|-------|
+| ID      | #73240 |
+| Title  | login flow implementation |
+| Type   | User Story |
+| State  | Active |
+| Assigned To | user@email.com |
+| Comments | 2 |
+```
+
+**Output (with `--comments`):**
+
+```markdown
+## Work Item #73240 — login flow implementation
+
+| Field   | Value |
+|--------|-------|
+| ID      | #73240 |
+| Title  | login flow implementation |
+| Type   | User Story |
+| State  | Active |
+| Assigned To | user@email.com |
+| Comments | 2 |
+
+### Comments
+
+1. **user@email.com** — 2024-01-15 10:30:
+   Working on the authentication service first.
+
+2. **user@email.com** — 2024-01-16 14:00:
+   Ready for review.
+```
+
+---
+
+### `fm task comment`
+
+**Goal:** Add a comment to the current work item.
+
+```
+fm task comment
+  --message <text>
+```
+
+Derives WI from current branch. Errors if on baseline. Posts a comment via the issue tracker API.
+
+**Output:**
+
+```
+Comment added to WI #73240.
+```
 
 ---
 
@@ -669,19 +741,23 @@ This runs parallel requests for each project in `[sonar].projects`.
 
 ```
 fm context
-  [--only-wi]
+  [--only-task]
   [--only-pr]
   [--only-git]
   [--only-pipeline]
+  [--task-comments]    show comments for the current work item
 ```
 
 **Baseline branch:** prints branch name and last commits.
 
 **Activity branch:** fetches and displays:
-- WI details (id, title, state, assigned to)
+- WI details (id, title, state, assigned to, comments count)
 - PR details (state, draft, target branch)
 - Git status (ahead/behind, local changes)
-- Latest CI pipeline run
+- Latest CI pipeline run (unless `--only-task` or `--only-pr` or `--only-git`)
+- Comments (if `--task-comments`)
+
+**Parallel fetching:** In Activity context, the WI, PR, Git status, and pipeline data are fetched in parallel when possible.
 
 **Output (activity):**
 
@@ -689,9 +765,10 @@ fm context
 ## Context — `feature/73240-login-flow`
 
 ### Work Item
-| ID    | #73240 |
-| Title | login flow implementation |
-| State | Active |
+| ID       | #73240 |
+| Title    | login flow implementation |
+| State    | Active |
+| Comments | 2 |
 
 ### Pull Request
 | PR     | #15650 |
@@ -702,6 +779,29 @@ fm context
 | Ahead  | 3 commits |
 | Behind | 0 commits |
 | Local  | clean |
+```
+
+**Output (with `--task-comments`):**
+
+```markdown
+## Context — `feature/73240-login-flow`
+
+### Work Item
+| ID       | #73240 |
+| Title    | login flow implementation |
+| State    | Active |
+| Comments | 2 |
+
+### Comments
+
+1. **user@email.com** — 2024-01-15 10:30:
+   Working on the authentication service first.
+
+2. **user@email.com** — 2024-01-16 14:00:
+   Ready for review.
+
+### Pull Request
+...
 ```
 
 ---

@@ -1,7 +1,7 @@
 use crate::commands::common::stash_and_push_current_activity;
 use crate::core::branch_cache::BranchCache;
 use crate::core::config::Config;
-use crate::core::context::{ContextManager, IdResolution, OutputFormatter};
+use crate::core::context::{Context, ContextManager, IdResolution, OutputFormatter};
 use crate::core::models::{WorkItemFilter, WorkItemId};
 use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
@@ -267,6 +267,74 @@ pub async fn list(mine: bool, state: String, type_name: String, max: i32) -> Res
             item.title,
             item.assigned_to.unwrap_or_else(|| "unassigned".to_string())
         );
+    }
+
+    Ok(())
+}
+
+pub async fn show(id: String, include_comments: bool, compact: bool) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
+    let git = LocalGitProvider;
+
+    let (wi_id, branch) = if id.is_empty() {
+        let branch = git.get_current_branch().await?;
+        match ContextManager::detect(&branch) {
+            Context::Activity { wi_id, .. } => (wi_id, Some(branch)),
+            _ => return Err(anyhow!("Not in an Activity context - provide a task id or run from an activity branch")),
+        }
+    } else {
+        let res = ContextManager::resolve_id(&id);
+        let wi_id = match res {
+            IdResolution::WorkItem(id) => id,
+            IdResolution::Ambiguous(id) => id,
+            _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
+        };
+        (wi_id, None)
+    };
+
+    let wi = tracker.get_work_item(&wi_id).await?;
+    let comments = tracker.get_work_item_comments(&wi_id).await?;
+
+    let pr = if let Some(b) = &branch {
+        let repo_name = git.get_repo_name()?;
+        vcs.get_pull_request_by_branch(&repo_name, b).await.ok().flatten()
+    } else {
+        None
+    };
+
+    let comments_count = comments.len() as i32;
+
+    if compact {
+        println!("#{} [{}] - {}", wi.id, wi.state, wi.title);
+        if let Some(p) = &pr {
+            println!("PR: {} - {}", p.id, p.source_branch);
+        }
+        println!("Comments: {}", comments_count);
+        return Ok(());
+    }
+
+    println!("## {} [{}] - {}", wi.id, wi.state, wi.title);
+
+    if let Some(p) = &pr {
+        println!("\nPR: {} - {}", p.id, p.source_branch);
+    }
+
+    if let Some(desc) = &wi.description {
+        if !desc.is_empty() {
+            println!("\n{}", desc);
+        }
+    }
+
+    if include_comments {
+        for comment in &comments {
+            let date = comment.created_at_date.as_deref().unwrap_or("");
+            let time = comment.created_at_time.as_deref().unwrap_or("");
+            println!("\n### {} {} - {}", date, time, comment.author);
+            println!("\n{}", comment.text);
+        }
     }
 
     Ok(())

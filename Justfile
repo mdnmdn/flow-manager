@@ -76,4 +76,4 @@ docs-update:
 docs-status:
 	git submodule status
 
-.PHONY: build test test-v fmt lint run run-help clean outdated update check watch-test watch-lint init docs-update docs-status ci-check
+# .PHONY: build test test-v fmt lint run run-help clean outdated update check watch-test watch-lint init docs-update docs-status ci-check

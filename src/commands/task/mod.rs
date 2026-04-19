@@ -153,3 +153,22 @@ pub async fn sync(rebase: bool, check: bool) -> Result<()> {
 
     Ok(())
 }
+
+pub async fn comment(message: String) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let git = LocalGitProvider;
+    let branch = git.get_current_branch().await?;
+    let context = ContextManager::detect(&branch);
+
+    let wi_id = match context {
+        Context::Activity { wi_id, .. } => wi_id,
+        _ => return Err(anyhow!("Not in an Activity context")),
+    };
+
+    let new_comment = tracker.add_work_item_comment(&wi_id, &message).await?;
+    println!("Comment added to WI #{}: {}", wi_id, new_comment.text);
+
+    Ok(())
+}

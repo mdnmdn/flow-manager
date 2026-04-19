@@ -1,6 +1,6 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, Repository, WorkItem,
-    WorkItemFilter, WorkItemId,
+    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, PullRequestComment,
+    Repository, WorkItem, WorkItemComment, WorkItemFilter, WorkItemId,
 };
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
 use anyhow::{anyhow, Result};
@@ -100,6 +100,7 @@ impl AzureDevOpsProvider {
                 .or_else(|| fields["System.AssignedTo"].as_str())
                 .map(|s| s.to_string()),
             tags,
+            comments_count: None,
         })
     }
 
@@ -563,6 +564,81 @@ impl IssueTracker for AzureDevOpsProvider {
             })
             .unwrap_or_default();
         Ok(branches)
+    }
+
+    async fn get_work_item_comments(&self, id: &WorkItemId) -> Result<Vec<WorkItemComment>> {
+        let url = self.v(&format!(
+            "{}/wit/workitems/{}/comments?api-version=7.0-preview.3",
+            self.base_api_url(),
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+        let comments: Vec<_> = body["comments"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| {
+                        let created = c["createdDate"].as_str()?;
+                        let (date, time) = created
+                            .split_once('T')
+                            .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
+                            .unwrap_or((created.to_string(), String::new()));
+                        Some(WorkItemComment {
+                            id: c["id"].as_i64()?.to_string(),
+                            author: c["createdBy"]["displayName"]
+                                .as_str()
+                                .or_else(|| c["createdBy"]["uniqueName"].as_str())
+                                .unwrap_or("unknown")
+                                .to_string(),
+                            created_at: created.to_string(),
+                            text: c["text"].as_str().unwrap_or("").to_string(),
+                            created_at_date: Some(date),
+                            created_at_time: Some(time),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(comments)
+    }
+
+    async fn add_work_item_comment(
+        &self,
+        id: &WorkItemId,
+        comment: &str,
+    ) -> Result<WorkItemComment> {
+        let url = self.v(&format!(
+            "{}/wit/workitems/{}/comments?api-version=7.0-preview.3",
+            self.base_api_url(),
+            id
+        ));
+        let body = json!({ "text": comment });
+        let resp = self.client.post(url).json(&body).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("Failed to add comment: {}", resp.text().await?));
+        }
+        let body: Value = resp.json().await?;
+        let created = body["createdDate"].as_str().unwrap_or("");
+        let (date, time) = created
+            .split_once('T')
+            .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
+            .unwrap_or((created.to_string(), String::new()));
+        Ok(WorkItemComment {
+            id: body["id"].as_i64().unwrap_or(0).to_string(),
+            author: body["createdBy"]["displayName"]
+                .as_str()
+                .or_else(|| body["createdBy"]["uniqueName"].as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            created_at: created.to_string(),
+            text: comment.to_string(),
+            created_at_date: Some(date),
+            created_at_time: Some(time),
+        })
     }
 }
 
@@ -1726,6 +1802,94 @@ impl VCSProvider for AzureDevOpsProvider {
         Err(anyhow!(
             "Not implemented for Azure DevOps provider (use LocalGitProvider)"
         ))
+    }
+
+    async fn get_pull_request_comments(&self, repository: &str, id: &str) -> Result<Vec<PullRequestComment>> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads",
+            self.base_api_url(),
+            repository,
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+        let threads: Vec<_> = body["value"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| {
+                        let comments = t["comments"].as_array()?;
+                        let first_comment = comments.first()?;
+                        let created = first_comment["publishedDate"].as_str()?;
+                        let (date, time) = created
+                            .split_once('T')
+                            .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
+                            .unwrap_or((created.to_string(), String::new()));
+                        Some(PullRequestComment {
+                            id: first_comment["id"].as_i64()?.to_string(),
+                            author: first_comment["author"]["displayName"]
+                                .as_str()
+                                .or_else(|| first_comment["author"]["uniqueName"].as_str())
+                                .unwrap_or("unknown")
+                                .to_string(),
+                            created_at: created.to_string(),
+                            content: first_comment["content"].as_str().unwrap_or("").to_string(),
+                            created_at_date: Some(date),
+                            created_at_time: Some(time),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(threads)
+    }
+
+    async fn add_pull_request_comment(&self, repository: &str, id: &str, comment: &str) -> Result<PullRequestComment> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads",
+            self.base_api_url(),
+            repository,
+            id
+        ));
+        let body = json!({
+            "comments": [
+                {
+                    "content": comment
+                }
+            ]
+        });
+        let resp = self.client.post(url).json(&body).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to add PR comment: {}",
+                resp.text().await?
+            ));
+        }
+        let body: Value = resp.json().await?;
+        let first_comment = body["comments"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| anyhow!("No comment in response"))?;
+        let created = first_comment["publishedDate"].as_str().unwrap_or("");
+        let (date, time) = created
+            .split_once('T')
+            .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
+            .unwrap_or((created.to_string(), String::new()));
+        Ok(PullRequestComment {
+            id: first_comment["id"].as_i64().unwrap_or(0).to_string(),
+            author: first_comment["author"]["displayName"]
+                .as_str()
+                .or_else(|| first_comment["author"]["uniqueName"].as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            created_at: created.to_string(),
+            content: comment.to_string(),
+            created_at_date: Some(date),
+            created_at_time: Some(time),
+        })
     }
 }
 

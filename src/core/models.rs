@@ -45,6 +45,27 @@ pub struct WorkItem {
     pub description: Option<String>,
     pub assigned_to: Option<String>,
     pub tags: Vec<String>,
+    pub comments_count: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkItemComment {
+    pub id: String,
+    pub author: String,
+    pub created_at: String,
+    pub text: String,
+    pub created_at_date: Option<String>,
+    pub created_at_time: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequestComment {
+    pub id: String,
+    pub author: String,
+    pub created_at: String,
+    pub content: String,
+    pub created_at_date: Option<String>,
+    pub created_at_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

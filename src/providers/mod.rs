@@ -1,6 +1,6 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, QualityIssue,
-    Repository, WorkItem, WorkItemFilter, WorkItemId,
+    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, PullRequestComment,
+    QualityIssue, Repository, WorkItem, WorkItemComment, WorkItemFilter, WorkItemId,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -50,6 +50,16 @@ pub trait IssueTracker {
     async fn get_linked_branch_names(&self, _id: &WorkItemId) -> Result<Vec<String>> {
         Ok(vec![])
     }
+
+    /// Get comments for a work item
+    async fn get_work_item_comments(&self, _id: &WorkItemId) -> Result<Vec<WorkItemComment>> {
+        Ok(vec![])
+    }
+
+    /// Add a comment to a work item
+    async fn add_work_item_comment(&self, _id: &WorkItemId, _comment: &str) -> Result<WorkItemComment> {
+        Err(anyhow::anyhow!("Adding comments not supported"))
+    }
 }
 
 #[async_trait]
@@ -91,6 +101,16 @@ pub trait VCSProvider {
         delete_source_branch: bool,
     ) -> Result<()>;
     async fn add_reviewer(&self, repository: &str, id: &str, reviewer_id: &str) -> Result<()>;
+
+    /// Get comments for a pull request
+    async fn get_pull_request_comments(&self, _repository: &str, _id: &str) -> Result<Vec<PullRequestComment>> {
+        Ok(vec![])
+    }
+
+    /// Add a comment to a pull request
+    async fn add_pull_request_comment(&self, _repository: &str, _id: &str, _comment: &str) -> Result<PullRequestComment> {
+        Err(anyhow::anyhow!("Adding PR comments not supported"))
+    }
 
     // Remote Branch/Repo Management
     async fn create_branch(&self, repository: &str, name: &str, source: &str) -> Result<()>;

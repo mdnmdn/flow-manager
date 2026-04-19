@@ -37,6 +37,8 @@ async fn main() -> anyhow::Result<()> {
                 type_name,
                 max,
             } => commands::work::list(mine, state, type_name, max).await?,
+            cli::TaskCommands::Show { id, no_comments, compact } => commands::work::show(id.unwrap_or_default(), !no_comments, compact).await?,
+            cli::TaskCommands::Comment { message } => commands::task::comment(message).await?,
             cli::TaskCommands::Hold { force, stay } => commands::task::hold(force, stay).await?,
             cli::TaskCommands::Update {
                 title,
@@ -51,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         cli::Commands::Pr { command } => match command {
-            cli::PrCommands::Show { id } => commands::pr::show(id).await?,
+            cli::PrCommands::Show { id, no_comments, compact } => commands::pr::show(id, !no_comments, compact).await?,
             cli::PrCommands::Update {
                 title,
                 description,
@@ -65,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
                 bypass_policy,
             } => commands::pr::merge(strategy, delete_source_branch, bypass_policy).await?,
             cli::PrCommands::Review { id } => commands::pr::review(id).await?,
+            cli::PrCommands::Comment { id, message } => commands::pr::comment(id, message).await?,
         },
         cli::Commands::Pipeline { command } => match command {
             cli::PipelineCommands::Run { id } => commands::pipeline::run(id).await?,
@@ -95,11 +98,15 @@ async fn main() -> anyhow::Result<()> {
             cli::TodoCommands::Next { pick } => commands::todo::next(pick).await?,
         },
         cli::Commands::Context {
-            only_wi,
+            only_task,
             only_pr,
             only_git,
             only_pipeline,
-        } => commands::context::run(only_wi, only_pr, only_git, only_pipeline).await?,
+            task_comments,
+        } => {
+            commands::context::run(only_task, only_pr, only_git, only_pipeline, task_comments)
+                .await?
+        }
         cli::Commands::Commit {
             message,
             all,

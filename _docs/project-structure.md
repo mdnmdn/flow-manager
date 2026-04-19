@@ -24,9 +24,9 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 │   │   ├── doctor.rs             # fm doctor
 │   │   ├── init.rs               # fm init [--discover]
 │   │   ├── work/
-│   │   │   └── mod.rs            # fm task new / load / list (implementation)
+│   │   │   └── mod.rs            # fm task new / load / list / show (implementation)
 │   │   ├── task/
-│   │   │   └── mod.rs            # fm task hold / update / sync / complete
+│   │   │   └── mod.rs            # fm task hold / update / sync / complete / comment
 │   │   ├── pr/
 │   │   │   └── mod.rs            # fm pr show / update / merge / review
 │   │   ├── todo/
@@ -70,14 +70,14 @@ Uses `clap` derive macros to define the full command-line interface in a single 
 - **Porcelain commands:** `Task`, `Pr`, `Todo`, `Pipeline`, `Context`, `Commit`, `Push`, `Sync`, `Sonar`, `Doctor`, `Init`
 - **Plumbing commands:** nested under `Plumbing` — direct access to Git and ADO primitives
 
-All `fm task new/load/list` (work item lifecycle) and `fm task hold/update/sync/complete` (activity lifecycle) are routed through the same `Task` subcommand.
+All `fm task new/load/list/show` (work item lifecycle) and `fm task hold/update/sync/complete/comment` (activity lifecycle) are routed through the same `Task` subcommand.
 
 ### 2. Command Layer (`src/commands/`)
 
 Implements the logic for each CLI command. `main.rs` dispatches into these functions; they orchestrate provider calls and format output.
 
-- `work/mod.rs` implements `new`, `load`, `list` (routed from `fm task new/load/list`)
-- `task/mod.rs` implements `hold`, `update`, `sync`, `complete`
+- `work/mod.rs` implements `new`, `load`, `list`, `show` (routed from `fm task new/load/list/show`)
+- `task/mod.rs` implements `hold`, `update`, `sync`, `complete`, `comment`
 - All other commands have a dedicated file or subdirectory
 
 ### 3. Core Layer (`src/core/`)
