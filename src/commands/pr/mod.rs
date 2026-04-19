@@ -23,7 +23,9 @@ pub async fn show(id: Option<String>) -> Result<()> {
                 // Derive branch name as fm does
                 let branch_name =
                     ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
-                let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                let pr = vcs
+                    .get_pull_request_by_branch(&repo_name, &branch_name)
+                    .await?;
                 match pr {
                     Some(p) => p.id,
                     None => {
@@ -44,7 +46,9 @@ pub async fn show(id: Option<String>) -> Result<()> {
                     let wi = tracker.get_work_item(&id).await?;
                     let branch_name =
                         ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
-                    let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                    let pr = vcs
+                        .get_pull_request_by_branch(&repo_name, &branch_name)
+                        .await?;
                     match pr {
                         Some(p) => p.id,
                         None => return Err(anyhow!("Could not resolve ID {} to a PR", id)),
@@ -144,7 +148,11 @@ pub async fn merge(
         _ => MergeStrategy::Squash,
     };
 
-    if !vcs.capabilities().merge_strategies.contains(&merge_strategy) {
+    if !vcs
+        .capabilities()
+        .merge_strategies
+        .contains(&merge_strategy)
+    {
         return Err(anyhow!(
             "Merge strategy `{}` is not supported by this provider.",
             merge_strategy

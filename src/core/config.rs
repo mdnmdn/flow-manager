@@ -92,7 +92,9 @@ impl Config {
             if let Some(ado) = &config.ado {
                 config.provider = Some(ProviderConfig::Ado(ado.clone()));
             } else {
-                return Err(ConfigError::Message("Missing provider configuration".into()));
+                return Err(ConfigError::Message(
+                    "Missing provider configuration".into(),
+                ));
             }
         } else if let Some(ProviderConfig::Ado(ado)) = &config.provider {
             if config.ado.is_none() {

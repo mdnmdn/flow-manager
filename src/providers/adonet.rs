@@ -805,7 +805,10 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.get_work_item(&WorkItemId::from_int(123)).await.unwrap();
+        let result = provider
+            .get_work_item(&WorkItemId::from_int(123))
+            .await
+            .unwrap();
         assert_eq!(result.id, WorkItemId::from_int(123));
         assert_eq!(result.title, "Test Title");
         assert_eq!(result.work_item_type, "User Story");
@@ -1002,7 +1005,10 @@ mod tests {
             .create_async()
             .await;
 
-        let result = provider.get_child_work_items(&WorkItemId::from_int(123), None).await.unwrap();
+        let result = provider
+            .get_child_work_items(&WorkItemId::from_int(123), None)
+            .await
+            .unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].id, WorkItemId::from_int(456));
         assert_eq!(result[1].id, WorkItemId::from_int(789));

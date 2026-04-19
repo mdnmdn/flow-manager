@@ -13,7 +13,9 @@ pub async fn show(all: bool, detail: bool) -> Result<()> {
     let tracker = provider_set.issue_tracker;
 
     if !tracker.capabilities().work_item_hierarchy {
-        return Err(anyhow!("Work item hierarchy is not supported by this provider. Todo commands are unavailable."));
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
     }
 
     let git = LocalGitProvider;
@@ -63,7 +65,9 @@ pub async fn new(
     let tracker = provider_set.issue_tracker;
 
     if !tracker.capabilities().work_item_hierarchy {
-        return Err(anyhow!("Work item hierarchy is not supported by this provider. Todo commands are unavailable."));
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
     }
 
     let git = LocalGitProvider;
@@ -130,7 +134,9 @@ pub async fn pick(reference: String) -> Result<()> {
     let tracker = provider_set.issue_tracker;
 
     if !tracker.capabilities().work_item_hierarchy {
-        return Err(anyhow!("Work item hierarchy is not supported by this provider. Todo commands are unavailable."));
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
     }
 
     let git = LocalGitProvider;
@@ -154,7 +160,9 @@ pub async fn complete(reference: String) -> Result<()> {
     let tracker = provider_set.issue_tracker;
 
     if !tracker.capabilities().work_item_hierarchy {
-        return Err(anyhow!("Work item hierarchy is not supported by this provider. Todo commands are unavailable."));
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
     }
 
     let git = LocalGitProvider;
@@ -178,7 +186,9 @@ pub async fn reopen(reference: String) -> Result<()> {
     let tracker = provider_set.issue_tracker;
 
     if !tracker.capabilities().work_item_hierarchy {
-        return Err(anyhow!("Work item hierarchy is not supported by this provider. Todo commands are unavailable."));
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
     }
 
     let git = LocalGitProvider;

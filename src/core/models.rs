@@ -120,8 +120,8 @@ impl std::fmt::Display for UserId {
 pub struct ProviderCapabilities {
     pub draft_pull_requests: bool,
     pub pipeline_support: bool,
-    pub work_item_hierarchy: bool,        // parent/child relationships
-    pub formal_artifact_links: bool,      // vs. description/comment-based linking
+    pub work_item_hierarchy: bool,   // parent/child relationships
+    pub formal_artifact_links: bool, // vs. description/comment-based linking
     pub merge_strategies: Vec<MergeStrategy>,
     pub work_item_relations: Vec<String>, // "blocks", "relates_to", "parent", etc.
 }
