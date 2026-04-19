@@ -14,6 +14,8 @@ Flow Manager (`fm`) is a Rust-based CLI tool designed to automate and simplify t
     - [`porcelain-commands-proposal.md`](_docs/porcelain-commands-proposal.md): Detailed proposal for high-level workflow commands.
     - [`project-structure.md`](_docs/project-structure.md): Overview of the project architecture and directory layout.
     - [`github-provider-analysis.md`](_docs/github-provider-analysis.md): Feasibility analysis for implementing a GitHub provider.
+    - [`gitlab-provider-analysis.md`](_docs/gitlab-provider-analysis.md): Feasibility analysis for implementing a GitLab provider.
+    - [`bitbucket-provider-analysis.md`](_docs/bitbucket-provider-analysis.md): Feasibility analysis for implementing a Bitbucket/Atlassian (Jira + Bitbucket) provider.
 
 ## Key Concepts
 - **Context:** The tool determines if you are in a "Baseline" context (shared branch) or "Activity" context (feature/fix branch linked to a Work Item).
