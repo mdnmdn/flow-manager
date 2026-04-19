@@ -15,6 +15,11 @@ pub struct AzureDevOpsProvider {
     client: Client,
     organization_url: String,
     project: String,
+    todo_wi_type: String,
+    bug_wi_type: String,
+    todo_in_progress_status: String,
+    todo_complete_status: String,
+    default_in_progress_status: String,
 }
 
 impl AzureDevOpsProvider {
@@ -32,7 +37,32 @@ impl AzureDevOpsProvider {
             client,
             organization_url: config.url.trim_end_matches('/').to_string(),
             project: config.project.clone(),
+            todo_wi_type: config.todo_wi_type.clone(),
+            bug_wi_type: config.bug_wi_type.clone(),
+            todo_in_progress_status: config.todo_in_progress_status.clone(),
+            todo_complete_status: config.todo_complete_status.clone(),
+            default_in_progress_status: config.default_in_progress_status.clone(),
         })
+    }
+
+    pub fn todo_wi_type(&self) -> &str {
+        &self.todo_wi_type
+    }
+
+    pub fn bug_wi_type(&self) -> &str {
+        &self.bug_wi_type
+    }
+
+    pub fn todo_in_progress_status(&self) -> &str {
+        &self.todo_in_progress_status
+    }
+
+    pub fn todo_complete_status(&self) -> &str {
+        &self.todo_complete_status
+    }
+
+    pub fn default_in_progress_status(&self) -> &str {
+        &self.default_in_progress_status
     }
 
     fn v(&self, url: &str) -> String {
@@ -665,6 +695,11 @@ mod tests {
             url: server.url(),
             project: "test-project".to_string(),
             pat: "test-pat".to_string(),
+            todo_wi_type: "Task".to_string(),
+            bug_wi_type: "Bug".to_string(),
+            todo_in_progress_status: "In Progress".to_string(),
+            todo_complete_status: "Done".to_string(),
+            default_in_progress_status: "In Progress".to_string(),
         };
         let provider = AzureDevOpsProvider::new(&config).unwrap();
         (server, provider)
@@ -1804,7 +1839,11 @@ impl VCSProvider for AzureDevOpsProvider {
         ))
     }
 
-    async fn get_pull_request_comments(&self, repository: &str, id: &str) -> Result<Vec<PullRequestComment>> {
+    async fn get_pull_request_comments(
+        &self,
+        repository: &str,
+        id: &str,
+    ) -> Result<Vec<PullRequestComment>> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests/{}/threads",
             self.base_api_url(),
@@ -1847,7 +1886,12 @@ impl VCSProvider for AzureDevOpsProvider {
         Ok(threads)
     }
 
-    async fn add_pull_request_comment(&self, repository: &str, id: &str, comment: &str) -> Result<PullRequestComment> {
+    async fn add_pull_request_comment(
+        &self,
+        repository: &str,
+        id: &str,
+        comment: &str,
+    ) -> Result<PullRequestComment> {
         let url = self.v(&format!(
             "{}/git/repositories/{}/pullrequests/{}/threads",
             self.base_api_url(),
@@ -1863,10 +1907,7 @@ impl VCSProvider for AzureDevOpsProvider {
         });
         let resp = self.client.post(url).json(&body).send().await?;
         if !resp.status().is_success() {
-            return Err(anyhow!(
-                "Failed to add PR comment: {}",
-                resp.text().await?
-            ));
+            return Err(anyhow!("Failed to add PR comment: {}", resp.text().await?));
         }
         let body: Value = resp.json().await?;
         let first_comment = body["comments"]

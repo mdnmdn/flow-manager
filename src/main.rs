@@ -37,7 +37,11 @@ async fn main() -> anyhow::Result<()> {
                 type_name,
                 max,
             } => commands::work::list(mine, state, type_name, max).await?,
-            cli::TaskCommands::Show { id, no_comments, compact } => commands::work::show(id.unwrap_or_default(), !no_comments, compact).await?,
+            cli::TaskCommands::Show {
+                id,
+                no_comments,
+                compact,
+            } => commands::work::show(id.unwrap_or_default(), !no_comments, compact).await?,
             cli::TaskCommands::Comment { message } => commands::task::comment(message).await?,
             cli::TaskCommands::Hold { force, stay } => commands::task::hold(force, stay).await?,
             cli::TaskCommands::Update {
@@ -53,7 +57,11 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         cli::Commands::Pr { command } => match command {
-            cli::PrCommands::Show { id, no_comments, compact } => commands::pr::show(id, !no_comments, compact).await?,
+            cli::PrCommands::Show {
+                id,
+                no_comments,
+                compact,
+            } => commands::pr::show(id, !no_comments, compact).await?,
             cli::PrCommands::Update {
                 title,
                 description,

@@ -41,9 +41,9 @@ pub async fn run(
 
     // 1. Create WI
     let wi_type = if type_name == "fix" {
-        "Bug"
+        tracker.bug_wi_type()
     } else {
-        "User Story"
+        &config.fm.default_wi_type
     };
     let tags_vec: Option<Vec<&str>> = tags.as_ref().map(|t| t.split(';').collect());
 
@@ -105,12 +105,14 @@ pub async fn run(
         .await?;
 
     // 6. Set WI state to Active
-    tracker.update_work_item_state(&wi.id, "Active").await?;
+    tracker
+        .update_work_item_state(&wi.id, tracker.default_in_progress_status())
+        .await?;
 
     // 8. Local checkout
     git.fetch().await?;
     git.checkout_branch(&branch_name).await?;
-    let cache_wi_type = if wi.work_item_type == "Bug" {
+    let cache_wi_type = if wi.work_item_type == tracker.bug_wi_type() {
         "fix"
     } else {
         "feature"
@@ -121,7 +123,7 @@ pub async fn run(
         wi_id: wi.id,
         title: wi.title,
         wi_type: wi.work_item_type,
-        state: "Active".to_string(),
+        state: tracker.default_in_progress_status().to_string(),
         branch: branch_name,
         pr_id: pr.id,
         target: target_branch,
@@ -190,7 +192,7 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
         ));
     }
     // Write branch→WI hint so context detection works even for non-conventional branch names.
-    let cache_wi_type = if wi.work_item_type == "Bug" {
+    let cache_wi_type = if wi.work_item_type == tracker.bug_wi_type() {
         "fix"
     } else {
         "feature"
@@ -198,7 +200,9 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     BranchCache::save(&branch_name, &wi.id, cache_wi_type);
 
     // Ensure Active
-    tracker.update_work_item_state(&wi.id, "Active").await?;
+    tracker
+        .update_work_item_state(&wi.id, tracker.default_in_progress_status())
+        .await?;
 
     // Stash restoration: pop unstaged first, then re-stage the staged stash
     let stash_base = format!("stash-{}-", wi.id);
@@ -246,9 +250,9 @@ pub async fn list(mine: bool, state: String, type_name: String, max: i32) -> Res
 
     if type_name != "all" {
         let actual_type = if type_name == "fix" {
-            "Bug"
+            tracker.bug_wi_type()
         } else {
-            "User Story"
+            &config.fm.default_wi_type
         };
         filter.work_item_type = Some(actual_type.to_string());
     }
@@ -279,28 +283,34 @@ pub async fn show(id: String, include_comments: bool, compact: bool) -> Result<(
     let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
-    let (wi_id, branch) = if id.is_empty() {
-        let branch = git.get_current_branch().await?;
-        match ContextManager::detect(&branch) {
-            Context::Activity { wi_id, .. } => (wi_id, Some(branch)),
-            _ => return Err(anyhow!("Not in an Activity context - provide a task id or run from an activity branch")),
-        }
-    } else {
-        let res = ContextManager::resolve_id(&id);
-        let wi_id = match res {
-            IdResolution::WorkItem(id) => id,
-            IdResolution::Ambiguous(id) => id,
-            _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
+    let (wi_id, branch) =
+        if id.is_empty() {
+            let branch = git.get_current_branch().await?;
+            match ContextManager::detect(&branch) {
+                Context::Activity { wi_id, .. } => (wi_id, Some(branch)),
+                _ => return Err(anyhow!(
+                    "Not in an Activity context - provide a task id or run from an activity branch"
+                )),
+            }
+        } else {
+            let res = ContextManager::resolve_id(&id);
+            let wi_id = match res {
+                IdResolution::WorkItem(id) => id,
+                IdResolution::Ambiguous(id) => id,
+                _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
+            };
+            (wi_id, None)
         };
-        (wi_id, None)
-    };
 
     let wi = tracker.get_work_item(&wi_id).await?;
     let comments = tracker.get_work_item_comments(&wi_id).await?;
 
     let pr = if let Some(b) = &branch {
         let repo_name = git.get_repo_name()?;
-        vcs.get_pull_request_by_branch(&repo_name, b).await.ok().flatten()
+        vcs.get_pull_request_by_branch(&repo_name, b)
+            .await
+            .ok()
+            .flatten()
     } else {
         None
     };

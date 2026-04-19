@@ -8,6 +8,21 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait IssueTracker {
     fn capabilities(&self) -> ProviderCapabilities;
+    fn todo_wi_type(&self) -> &str {
+        "Task"
+    }
+    fn bug_wi_type(&self) -> &str {
+        "Bug"
+    }
+    fn todo_in_progress_status(&self) -> &str {
+        "In Progress"
+    }
+    fn todo_complete_status(&self) -> &str {
+        "Done"
+    }
+    fn default_in_progress_status(&self) -> &str {
+        "In Progress"
+    }
     async fn get_work_item(&self, id: &WorkItemId) -> Result<WorkItem>;
     async fn create_work_item(
         &self,
@@ -57,7 +72,11 @@ pub trait IssueTracker {
     }
 
     /// Add a comment to a work item
-    async fn add_work_item_comment(&self, _id: &WorkItemId, _comment: &str) -> Result<WorkItemComment> {
+    async fn add_work_item_comment(
+        &self,
+        _id: &WorkItemId,
+        _comment: &str,
+    ) -> Result<WorkItemComment> {
         Err(anyhow::anyhow!("Adding comments not supported"))
     }
 }
@@ -103,12 +122,21 @@ pub trait VCSProvider {
     async fn add_reviewer(&self, repository: &str, id: &str, reviewer_id: &str) -> Result<()>;
 
     /// Get comments for a pull request
-    async fn get_pull_request_comments(&self, _repository: &str, _id: &str) -> Result<Vec<PullRequestComment>> {
+    async fn get_pull_request_comments(
+        &self,
+        _repository: &str,
+        _id: &str,
+    ) -> Result<Vec<PullRequestComment>> {
         Ok(vec![])
     }
 
     /// Add a comment to a pull request
-    async fn add_pull_request_comment(&self, _repository: &str, _id: &str, _comment: &str) -> Result<PullRequestComment> {
+    async fn add_pull_request_comment(
+        &self,
+        _repository: &str,
+        _id: &str,
+        _comment: &str,
+    ) -> Result<PullRequestComment> {
         Err(anyhow::anyhow!("Adding PR comments not supported"))
     }
 

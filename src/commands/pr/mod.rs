@@ -67,7 +67,10 @@ pub async fn show(id: Option<String>, include_comments: bool, compact: bool) -> 
     };
 
     let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
-    let pr_comments = vcs.get_pull_request_comments(&repo_name, &pr_id).await.unwrap_or_default();
+    let pr_comments = vcs
+        .get_pull_request_comments(&repo_name, &pr_id)
+        .await
+        .unwrap_or_default();
 
     let comments_count = pr_comments.len() as i32;
 
@@ -239,8 +242,11 @@ pub async fn comment(id: Option<String>, message: String) -> Result<()> {
             IdResolution::PullRequest(id) => id,
             IdResolution::WorkItem(wi_id) => {
                 let wi = tracker.get_work_item(&wi_id).await?;
-                let branch_name = ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
-                let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                let branch_name =
+                    ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                let pr = vcs
+                    .get_pull_request_by_branch(&repo_name, &branch_name)
+                    .await?;
                 pr.ok_or_else(|| anyhow!("No PR found for WI"))?.id
             }
             IdResolution::Ambiguous(id) => {
@@ -248,8 +254,11 @@ pub async fn comment(id: Option<String>, message: String) -> Result<()> {
                     p.id
                 } else {
                     let wi = tracker.get_work_item(&id).await?;
-                    let branch_name = ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
-                    let pr = vcs.get_pull_request_by_branch(&repo_name, &branch_name).await?;
+                    let branch_name =
+                        ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type);
+                    let pr = vcs
+                        .get_pull_request_by_branch(&repo_name, &branch_name)
+                        .await?;
                     pr.ok_or_else(|| anyhow!("No PR found"))?.id
                 }
             }
@@ -258,10 +267,12 @@ pub async fn comment(id: Option<String>, message: String) -> Result<()> {
     } else {
         let branch = git.get_current_branch().await?;
         let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
-        pr.ok_or_else(|| anyhow!("No PR found for current branch"))?.id
+        pr.ok_or_else(|| anyhow!("No PR found for current branch"))?
+            .id
     };
 
-    vcs.add_pull_request_comment(&repo_name, &pr_id, &message).await?;
+    vcs.add_pull_request_comment(&repo_name, &pr_id, &message)
+        .await?;
     println!("Comment added to PR #{}", pr_id);
 
     Ok(())

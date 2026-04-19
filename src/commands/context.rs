@@ -68,7 +68,9 @@ pub async fn run(
             let comments_count = comments.len() as i32;
 
             let pr_comments = if let Some(ref p) = &pr {
-                vcs.get_pull_request_comments(&repo_name, &p.id).await.unwrap_or_default()
+                vcs.get_pull_request_comments(&repo_name, &p.id)
+                    .await
+                    .unwrap_or_default()
             } else {
                 vec![]
             };

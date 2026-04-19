@@ -22,6 +22,32 @@ pub struct AdoConfig {
     pub url: String,
     pub project: String,
     pub pat: String,
+    #[serde(default = "default_todo_wi_type")]
+    pub todo_wi_type: String,
+    #[serde(default = "default_bug_wi_type")]
+    pub bug_wi_type: String,
+    #[serde(default = "default_in_progress")]
+    pub todo_in_progress_status: String,
+    #[serde(default = "default_complete")]
+    pub todo_complete_status: String,
+    #[serde(default = "default_in_progress")]
+    pub default_in_progress_status: String,
+}
+
+fn default_todo_wi_type() -> String {
+    "Task".to_string()
+}
+
+fn default_bug_wi_type() -> String {
+    "Bug".to_string()
+}
+
+fn default_in_progress() -> String {
+    "In Progress".to_string()
+}
+
+fn default_complete() -> String {
+    "Done".to_string()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -45,19 +45,19 @@ pub enum Commands {
     //     d. Fetch latest CI pipeline run for this branch.
     Context {
         /// Show only work item details
-        #[arg(long)]
+        #[arg(short, long)]
         only_task: bool,
         /// Show only PR details
-        #[arg(long)]
+        #[arg(short, long)]
         only_pr: bool,
         /// Show only git details
-        #[arg(long)]
+        #[arg(short, long)]
         only_git: bool,
         /// Show only pipeline details
-        #[arg(long)]
+        #[arg(short, long)]
         only_pipeline: bool,
         /// Show comments for the current work item
-        #[arg(long)]
+        #[arg(short, long)]
         task_comments: bool,
     },
     /// Commit changes, handling the docs submodule transparently
@@ -75,13 +75,13 @@ pub enum Commands {
         #[arg(short, long)]
         all: bool,
         /// Amend the previous commit
-        #[arg(long)]
+        #[arg(short, long)]
         amend: bool,
         /// Override docs submodule commit message
-        #[arg(long)]
+        #[arg(short, long)]
         docs_message: Option<String>,
         /// Skip docs submodule handling
-        #[arg(long)]
+        #[arg(short, long)]
         no_docs: bool,
     },
     /// Push the current branch, including docs handling
@@ -91,10 +91,10 @@ pub enum Commands {
     // - Push _docs first if needed, then stage and commit pointer.
     Push {
         /// Use --force-with-lease
-        #[arg(long)]
+        #[arg(short, long)]
         force: bool,
         /// Skip docs submodule handling
-        #[arg(long)]
+        #[arg(short, long)]
         no_docs: bool,
     },
     /// Commit and push in one step
@@ -105,7 +105,7 @@ pub enum Commands {
         #[arg(short, long)]
         message: Option<String>,
         /// Docs submodule commit message
-        #[arg(long)]
+        #[arg(short, long)]
         docs_message: Option<String>,
     },
     /// Manage SonarQube issues and projects
@@ -118,7 +118,7 @@ pub enum Commands {
     /// Run diagnostic checks
     Doctor {
         /// Attempt to fix broken invariants
-        #[arg(long)]
+        #[arg(short, long)]
         fix: bool,
     },
     /// Low-level plumbing commands
@@ -127,10 +127,10 @@ pub enum Commands {
     /// Initialize a new configuration file
     Init {
         /// Output file path (default: fm.toml)
-        #[arg(long)]
+        #[arg(short, long)]
         path: Option<String>,
         /// Discover config from .env file and git remote
-        #[arg(long)]
+        #[arg(short, long)]
         discover: bool,
     },
     /// Show the current version
@@ -150,28 +150,28 @@ pub enum TaskCommands {
     // 7. git fetch && git checkout branch.
     New {
         /// Work item title
-        #[arg(long)]
+        #[arg(short, long)]
         title: String,
         /// Work item description
-        #[arg(long)]
+        #[arg(short, long)]
         description: Option<String>,
         /// Branch slug suffix
-        #[arg(long)]
+        #[arg(short, long)]
         branch: Option<String>,
         /// feature or fix
-        #[arg(long, default_value = "feature")]
+        #[arg(short, long, default_value = "feature")]
         type_name: String,
         /// Target baseline branch
-        #[arg(long)]
+        #[arg(short, long)]
         target: Option<String>,
         /// Assigned-to
-        #[arg(long)]
+        #[arg(short, long)]
         assigned_to: Option<String>,
         /// Semicolon-separated tags
-        #[arg(long)]
+        #[arg(short, long)]
         tags: Option<String>,
         /// SonarQube project key
-        #[arg(long)]
+        #[arg(short, long)]
         sonar_project: Option<String>,
     },
     /// Resume an existing work item
@@ -188,7 +188,7 @@ pub enum TaskCommands {
         /// WI id, PR id, or branch name
         id: String,
         /// Target baseline branch
-        #[arg(long)]
+        #[arg(short, long)]
         target: Option<String>,
     },
     /// List work items
@@ -196,16 +196,16 @@ pub enum TaskCommands {
     // Runs WIQL query scoped to the ADO project with the given filters.
     List {
         /// Filter by current user
-        #[arg(long)]
+        #[arg(short, long)]
         mine: bool,
         /// State filter
-        #[arg(long, default_value = "Active")]
+        #[arg(short, long, default_value = "Active")]
         state: String,
         /// feature, fix, all
-        #[arg(long, default_value = "all")]
+        #[arg(short, long, default_value = "all")]
         type_name: String,
         /// Maximum results
-        #[arg(long, default_value_t = 20)]
+        #[arg(short, long, default_value_t = 20)]
         max: i32,
     },
     /// Show work item details
@@ -216,10 +216,10 @@ pub enum TaskCommands {
         /// WI id, PR id, or branch name (optional, uses current context if omitted)
         id: Option<String>,
         /// Hide comments (default: show comments)
-        #[arg(long)]
+        #[arg(short, long)]
         no_comments: bool,
         /// Show compact format (id, status, title, comments count, branch, PR)
-        #[arg(long)]
+        #[arg(short, long)]
         compact: bool,
     },
     /// Add a comment to the current work item
@@ -228,7 +228,7 @@ pub enum TaskCommands {
     // 2. Add comment via the issue tracker API.
     Comment {
         /// Comment text
-        #[arg(long)]
+        #[arg(short, long)]
         message: String,
     },
     /// Pause the current activity
@@ -310,7 +310,7 @@ pub enum PrCommands {
         /// PR id, WI id, or branch (optional, uses current context if omitted)
         id: Option<String>,
         /// Comment text
-        #[arg(long)]
+        #[arg(short, long)]
         message: String,
     },
     /// Update the PR linked to the current activity

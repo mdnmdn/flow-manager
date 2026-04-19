@@ -26,16 +26,21 @@ pub async fn show(all: bool, detail: bool) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let children = tracker.get_child_work_items(&wi_id, Some("Task")).await?;
+    let children = tracker
+        .get_child_work_items(&wi_id, Some(tracker.todo_wi_type()))
+        .await?;
+
+    let in_progress = tracker.todo_in_progress_status();
+    let done = tracker.todo_complete_status();
 
     println!("## Todos for WI #{}", wi_id);
     for child in children {
-        if !all && (child.state == "Closed" || child.state == "Done") {
+        if !all && (child.state == "Closed" || child.state == done) {
             continue;
         }
-        let icon = if child.state == "Active" {
+        let icon = if child.state == in_progress {
             "●"
-        } else if child.state == "Closed" || child.state == "Done" {
+        } else if child.state == "Closed" || child.state == done {
             "✓"
         } else {
             "○"
@@ -81,7 +86,7 @@ pub async fn new(
     let task = tracker
         .create_work_item(
             &title,
-            "Task",
+            tracker.todo_wi_type(),
             description.as_deref(),
             assigned_to.as_deref(),
             None,
@@ -92,7 +97,9 @@ pub async fn new(
         .await?;
 
     if pick {
-        tracker.update_work_item_state(&task.id, "Active").await?;
+        tracker
+            .update_work_item_state(&task.id, tracker.todo_in_progress_status())
+            .await?;
     }
 
     println!("Todo #{} created and linked to WI #{}.", task.id, wi_id);
@@ -108,7 +115,9 @@ async fn resolve_ref(
         return Ok(WorkItemId::from(reference));
     }
 
-    let children = tracker.get_child_work_items(wi_id, Some("Task")).await?;
+    let children = tracker
+        .get_child_work_items(wi_id, Some(tracker.todo_wi_type()))
+        .await?;
     let matches: Vec<_> = children
         .into_iter()
         .filter(|c| c.title.to_lowercase().contains(&reference.to_lowercase()))
@@ -148,9 +157,15 @@ pub async fn pick(reference: String) -> Result<()> {
     };
 
     let task_id = resolve_ref(tracker.as_ref(), &wi_id, &reference).await?;
-    tracker.update_work_item_state(&task_id, "Active").await?;
+    tracker
+        .update_work_item_state(&task_id, tracker.todo_in_progress_status())
+        .await?;
 
-    println!("Todo #{} is now Active.", task_id);
+    println!(
+        "Todo #{} is now {}.",
+        task_id,
+        tracker.todo_in_progress_status()
+    );
     Ok(())
 }
 
@@ -255,7 +270,9 @@ pub async fn next(pick_it: bool) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let children = tracker.get_child_work_items(&wi_id, Some("Task")).await?;
+    let children = tracker
+        .get_child_work_items(&wi_id, Some(tracker.todo_wi_type()))
+        .await?;
     let next_task = children
         .into_iter()
         .filter(|c| c.state == "New")
@@ -264,7 +281,9 @@ pub async fn next(pick_it: bool) -> Result<()> {
     if let Some(task) = next_task {
         println!("Next Todo: #{} {}", task.id, task.title);
         if pick_it {
-            tracker.update_work_item_state(&task.id, "Active").await?;
+            tracker
+                .update_work_item_state(&task.id, tracker.todo_in_progress_status())
+                .await?;
             println!("Todo #{} is now Active.", task.id);
         }
     } else {

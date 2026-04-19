@@ -60,14 +60,15 @@ pub async fn run(fix: bool) -> Result<()> {
             wi_type: _,
         } = context
         {
+            let in_progress = tracker.default_in_progress_status();
             println!("Detected activity for WI #{}", wi_id);
             // 1. Ensure WI is Active
-            tracker.update_work_item_state(&wi_id, "Active").await?;
+            tracker.update_work_item_state(&wi_id, in_progress).await?;
 
             // 2. Ensure Branch and PR links exist
             // (Logic to fetch branch URL and PR URL and call ado.create_artifact_link)
             // For now, this is a placeholder for the actual repair logic
-            println!("- WI state set to Active");
+            println!("- WI state set to {}", in_progress);
         }
     }
 
