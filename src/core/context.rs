@@ -1,4 +1,7 @@
+use crate::core::models::WorkItemId;
 use anyhow::Result;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -8,27 +11,24 @@ pub enum Context {
     },
     Activity {
         branch: String,
-        wi_id: i32,
+        wi_id: WorkItemId,
         wi_type: String, // feature or fix
     },
 }
+
+static BRANCH_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(feature|fix)/([A-Z]+-\d+|\d+)-(.+)$").unwrap());
 
 pub struct ContextManager;
 
 impl ContextManager {
     pub fn detect(branch: &str) -> Context {
-        if branch.starts_with("feature/") || branch.starts_with("fix/") {
-            let parts: Vec<&str> = branch.split('/').collect();
-            if parts.len() == 2 {
-                let wi_parts: Vec<&str> = parts[1].split('-').collect();
-                if let Ok(id) = wi_parts[0].parse::<i32>() {
-                    return Context::Activity {
-                        branch: branch.to_string(),
-                        wi_id: id,
-                        wi_type: parts[0].to_string(),
-                    };
-                }
-            }
+        if let Some(caps) = BRANCH_RE.captures(branch) {
+            return Context::Activity {
+                branch: branch.to_string(),
+                wi_id: WorkItemId(caps[2].to_string()),
+                wi_type: caps[1].to_string(),
+            };
         }
         Context::Baseline {
             branch: branch.to_string(),
@@ -36,46 +36,45 @@ impl ContextManager {
     }
 
     pub fn resolve_id(input: &str) -> IdResolution {
-        if let Ok(id) = input.parse::<i32>() {
-            return IdResolution::Ambiguous(id);
+        if let Some(caps) = BRANCH_RE.captures(input) {
+            return IdResolution::WorkItem(WorkItemId(caps[2].to_string()));
         }
+
         if input.starts_with("w-") || input.starts_with("wi-") || input.starts_with("w") {
-            let numeric = input
+            let id = input
                 .trim_start_matches("wi-")
                 .trim_start_matches("w-")
                 .trim_start_matches('w');
-            if let Ok(id) = numeric.parse::<i32>() {
-                return IdResolution::WorkItem(id);
+            if !id.is_empty() {
+                return IdResolution::WorkItem(WorkItemId(id.to_string()));
             }
         }
         if input.starts_with("pr-") || input.starts_with("p-") {
-            let numeric = input.trim_start_matches("pr-").trim_start_matches("p-");
-            if let Ok(id) = numeric.parse::<i32>() {
-                return IdResolution::PullRequest(id);
+            let id = input.trim_start_matches("pr-").trim_start_matches("p-");
+            if !id.is_empty() {
+                return IdResolution::PullRequest(id.to_string());
             }
         }
-        if input.starts_with("feature/") || input.starts_with("fix/") {
-            let parts: Vec<&str> = input.split('/').collect();
-            if parts.len() == 2 {
-                let wi_parts: Vec<&str> = parts[1].split('-').collect();
-                if let Ok(id) = wi_parts[0].parse::<i32>() {
-                    return IdResolution::WorkItem(id);
-                }
-            }
+
+        // Generic ID could be work item or PR, but we'll default to Ambiguous WorkItem for now
+        // if it matches the pattern of a possible ID.
+        if !input.is_empty() && input.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            return IdResolution::Ambiguous(WorkItemId(input.to_string()));
         }
+
         IdResolution::Unknown(input.to_string())
     }
 }
 
 pub enum IdResolution {
-    WorkItem(i32),
-    PullRequest(i32),
-    Ambiguous(i32),
+    WorkItem(WorkItemId),
+    PullRequest(String),
+    Ambiguous(WorkItemId),
     Unknown(String),
 }
 
 impl ContextManager {
-    pub fn derive_branch_name(wi_id: i32, title: &str, wi_type: &str) -> String {
+    pub fn derive_branch_name(wi_id: &WorkItemId, title: &str, wi_type: &str) -> String {
         let slug = title.to_lowercase().replace(' ', "-");
         let prefix = if wi_type == "Bug" || wi_type == "fix" {
             "fix"

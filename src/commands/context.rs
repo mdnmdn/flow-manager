@@ -1,14 +1,17 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager};
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
-use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
+use crate::providers::VCSProvider;
 use anyhow::Result;
 use tokio::join;
 
 pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bool) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
+    let pipeline = provider_set.pipeline;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -20,16 +23,23 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
             println!("\nLast commits:\n{}", log);
         }
         Context::Activity { branch, wi_id, .. } => {
+            let repo_name = config.fm.submodules.first().cloned().unwrap_or_default();
             // Parallelize fetches
-            let wi_fut = ado.get_work_item(wi_id);
-            let pr_fut = ado.get_pull_request_by_branch(&config.ado.project, &branch);
+            let wi_fut = tracker.get_work_item(&wi_id);
+            let pr_fut = vcs.get_pull_request_by_branch(&repo_name, &branch);
             let git_status_fut = git.get_status();
             let target = format!("origin/{}", config.fm.default_target);
             let ahead_range = format!("{}..HEAD", target);
             let behind_range = format!("HEAD..{}", target);
             let log_ahead_fut = git.get_log(Some(&ahead_range), None);
             let log_behind_fut = git.get_log(Some(&behind_range), None);
-            let pipeline_fut = ado.get_latest_run(&branch);
+            let pipeline_fut = async {
+                if let Some(p) = &pipeline {
+                    p.get_latest_run(&branch).await
+                } else {
+                    Ok(None)
+                }
+            };
 
             let (wi_res, pr_res, git_res, ahead_res, behind_res, pipe_res) = join!(
                 wi_fut,

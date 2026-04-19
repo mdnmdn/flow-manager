@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager};
-use crate::providers::adonet::AzureDevOpsProvider;
+use crate::core::models::WorkItemId;
+use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::IssueTracker;
 use crate::providers::VCSProvider;
@@ -8,7 +9,15 @@ use anyhow::{anyhow, Result};
 
 pub async fn show(all: bool, detail: bool) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -17,7 +26,7 @@ pub async fn show(all: bool, detail: bool) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+    let children = tracker.get_child_work_items(&wi_id, Some("Task")).await?;
 
     println!("## Todos for WI #{}", wi_id);
     for child in children {
@@ -52,7 +61,15 @@ pub async fn new(
     pick: bool,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -61,7 +78,7 @@ pub async fn new(
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let task = ado
+    let task = tracker
         .create_work_item(
             &title,
             "Task",
@@ -70,23 +87,28 @@ pub async fn new(
             None,
         )
         .await?;
-    ado.link_work_items(wi_id, task.id, "System.LinkTypes.Hierarchy-Forward")
+    tracker
+        .link_work_items(&wi_id, &task.id, "System.LinkTypes.Hierarchy-Forward")
         .await?;
 
     if pick {
-        ado.update_work_item_state(task.id, "Active").await?;
+        tracker.update_work_item_state(&task.id, "Active").await?;
     }
 
     println!("Todo #{} created and linked to WI #{}.", task.id, wi_id);
     Ok(())
 }
 
-async fn resolve_ref(ado: &AzureDevOpsProvider, wi_id: i32, reference: &str) -> Result<i32> {
-    if let Ok(id) = reference.parse::<i32>() {
-        return Ok(id);
+async fn resolve_ref(
+    tracker: &dyn IssueTracker,
+    wi_id: &WorkItemId,
+    reference: &str,
+) -> Result<WorkItemId> {
+    if reference.chars().all(|c| c.is_numeric()) {
+        return Ok(WorkItemId::from(reference));
     }
 
-    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+    let children = tracker.get_child_work_items(wi_id, Some("Task")).await?;
     let matches: Vec<_> = children
         .into_iter()
         .filter(|c| c.title.to_lowercase().contains(&reference.to_lowercase()))
@@ -103,12 +125,20 @@ async fn resolve_ref(ado: &AzureDevOpsProvider, wi_id: i32, reference: &str) -> 
         return Err(anyhow!("Ambiguous reference `{}`", reference));
     }
 
-    Ok(matches[0].id)
+    Ok(matches[0].id.clone())
 }
 
 pub async fn pick(reference: String) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -117,8 +147,8 @@ pub async fn pick(reference: String) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
-    ado.update_work_item_state(task_id, "Active").await?;
+    let task_id = resolve_ref(tracker.as_ref(), &wi_id, &reference).await?;
+    tracker.update_work_item_state(&task_id, "Active").await?;
 
     println!("Todo #{} is now Active.", task_id);
     Ok(())
@@ -126,7 +156,15 @@ pub async fn pick(reference: String) -> Result<()> {
 
 pub async fn complete(reference: String) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -135,8 +173,8 @@ pub async fn complete(reference: String) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
-    ado.update_work_item_state(task_id, "Closed").await?;
+    let task_id = resolve_ref(tracker.as_ref(), &wi_id, &reference).await?;
+    tracker.update_work_item_state(&task_id, "Closed").await?;
 
     println!("Todo #{} is now Closed.", task_id);
     Ok(())
@@ -144,7 +182,15 @@ pub async fn complete(reference: String) -> Result<()> {
 
 pub async fn reopen(reference: String) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -153,8 +199,8 @@ pub async fn reopen(reference: String) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
-    ado.update_work_item_state(task_id, "New").await?;
+    let task_id = resolve_ref(tracker.as_ref(), &wi_id, &reference).await?;
+    tracker.update_work_item_state(&task_id, "New").await?;
 
     println!("Todo #{} is now New.", task_id);
     Ok(())
@@ -168,7 +214,8 @@ pub async fn update(
     state: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -177,18 +224,19 @@ pub async fn update(
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let task_id = resolve_ref(&ado, wi_id, &reference).await?;
-    ado.update_work_item(
-        task_id,
-        title.as_deref(),
-        description.as_deref(),
-        assigned_to.as_deref(),
-        None,
-    )
-    .await?;
+    let task_id = resolve_ref(tracker.as_ref(), &wi_id, &reference).await?;
+    tracker
+        .update_work_item(
+            &task_id,
+            title.as_deref(),
+            description.as_deref(),
+            assigned_to.as_deref(),
+            None,
+        )
+        .await?;
 
     if let Some(s) = state {
-        ado.update_work_item_state(task_id, &s).await?;
+        tracker.update_work_item_state(&task_id, &s).await?;
     }
 
     println!("Todo #{} updated.", task_id);
@@ -197,7 +245,8 @@ pub async fn update(
 
 pub async fn next(pick_it: bool) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -206,16 +255,16 @@ pub async fn next(pick_it: bool) -> Result<()> {
         _ => return Err(anyhow!("Not in an Activity context")),
     };
 
-    let children = ado.get_child_work_items(wi_id, Some("Task")).await?;
+    let children = tracker.get_child_work_items(&wi_id, Some("Task")).await?;
     let next_task = children
         .into_iter()
         .filter(|c| c.state == "New")
-        .min_by_key(|c| c.id);
+        .min_by_key(|c| c.id.clone());
 
     if let Some(task) = next_task {
         println!("Next Todo: #{} {}", task.id, task.title);
         if pick_it {
-            ado.update_work_item_state(task.id, "Active").await?;
+            tracker.update_work_item_state(&task.id, "Active").await?;
             println!("Todo #{} is now Active.", task.id);
         }
     } else {
