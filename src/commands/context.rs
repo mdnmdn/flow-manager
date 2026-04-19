@@ -3,12 +3,15 @@ use crate::core::context::{Context, ContextManager};
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::join;
 
 pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bool) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
     let context = ContextManager::detect(&branch);
@@ -20,9 +23,8 @@ pub async fn run(only_wi: bool, only_pr: bool, only_git: bool, only_pipeline: bo
             println!("\nLast commits:\n{}", log);
         }
         Context::Activity { branch, wi_id, .. } => {
-            // Parallelize fetches
-            let wi_fut = ado.get_work_item(wi_id);
-            let pr_fut = ado.get_pull_request_by_branch(&config.ado.project, &branch);
+            let wi_fut = ado.get_work_item(&wi_id);
+            let pr_fut = ado.get_pull_request_by_branch(&ado_config.project, &branch);
             let git_status_fut = git.get_status();
             let target = format!("origin/{}", config.fm.default_target);
             let ahead_range = format!("{}..HEAD", target);

@@ -42,8 +42,11 @@ pub async fn run(
         Some(m) => m,
         None => {
             if let Context::Activity { wi_id, .. } = ContextManager::detect(&branch) {
-                let ado = AzureDevOpsProvider::new(&config.ado)?;
-                let wi = ado.get_work_item(wi_id).await?;
+                let ado_config = config
+                    .ado_config()
+                    .ok_or_else(|| anyhow::anyhow!("ADO provider not configured"))?;
+                let ado = AzureDevOpsProvider::new(ado_config)?;
+                let wi = ado.get_work_item(&wi_id).await?;
                 format!("[#{}] {}: work in progress", wi.id, wi.title)
             } else {
                 return Err(anyhow::anyhow!(

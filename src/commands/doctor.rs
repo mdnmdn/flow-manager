@@ -22,49 +22,40 @@ pub async fn run(fix: bool) -> Result<()> {
     );
 
     // 2. Check Providers
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
-    let ado_check = ado.get_repository(&config.ado.project).await.is_ok();
-    println!("| ADO   | {} |", if ado_check { "✓" } else { "✗" });
+    if let Some(ado_config) = config.ado_config() {
+        let ado = AzureDevOpsProvider::new(ado_config)?;
+        let ado_check = ado.get_repository(&ado_config.project).await.is_ok();
+        println!("| ADO   | {} |", if ado_check { "✓" } else { "✗" });
 
-    if let Some(sonar_config) = &config.sonar {
-        let _sonar = SonarProvider::new(sonar_config)?;
-        // Simple ping or list projects if possible, for now just check if we can build it
-        println!("| Sonar | ✓ |");
-    }
-
-    // 3. Check Submodules
-    let git = LocalGitProvider;
-    for sub in &config.fm.submodules {
-        let exists = std::path::Path::new(sub).exists();
-        println!(
-            "| Submodule `{}` | {} |",
-            sub,
-            if exists { "✓" } else { "✗" }
-        );
-    }
-
-    if fix {
-        println!("\n### Fixing invariants...");
-        // Implement fix logic: repair links, etc.
-        // This requires detecting current context
-        let branch = git.get_current_branch().await?;
-        let context = crate::core::context::ContextManager::detect(&branch);
-
-        if let crate::core::context::Context::Activity {
-            branch: _,
-            wi_id,
-            wi_type: _,
-        } = context
-        {
-            println!("Detected activity for WI #{}", wi_id);
-            // 1. Ensure WI is Active
-            ado.update_work_item_state(wi_id, "Active").await?;
-
-            // 2. Ensure Branch and PR links exist
-            // (Logic to fetch branch URL and PR URL and call ado.create_artifact_link)
-            // For now, this is a placeholder for the actual repair logic
-            println!("- WI state set to Active");
+        if let Some(sonar_config) = &config.sonar {
+            let _sonar = SonarProvider::new(sonar_config)?;
+            println!("| Sonar | ✓ |");
         }
+
+        // 3. Check Submodules
+        let git = LocalGitProvider;
+        for sub in &config.fm.submodules {
+            let exists = std::path::Path::new(sub).exists();
+            println!(
+                "| Submodule `{}` | {} |",
+                sub,
+                if exists { "✓" } else { "✗" }
+            );
+        }
+
+        if fix {
+            println!("\n### Fixing invariants...");
+            let branch = git.get_current_branch().await?;
+            let context = crate::core::context::ContextManager::detect(&branch);
+
+            if let crate::core::context::Context::Activity { wi_id, .. } = context {
+                println!("Detected activity for WI #{}", wi_id);
+                ado.update_work_item_state(&wi_id, "Active").await?;
+                println!("- WI state set to Active");
+            }
+        }
+    } else {
+        println!("| Provider | ✗ (no ADO config) |");
     }
 
     Ok(())

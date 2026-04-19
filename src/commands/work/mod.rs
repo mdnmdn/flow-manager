@@ -1,5 +1,6 @@
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager, OutputFormatter};
+use crate::core::models::WorkItemFilter;
 use crate::providers::adonet::AzureDevOpsProvider;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::sonar::SonarProvider;
@@ -9,12 +10,12 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 struct WorkNewResult {
-    wi_id: i32,
+    wi_id: String,
     title: String,
     wi_type: String,
     state: String,
     branch: String,
-    pr_id: i32,
+    pr_id: String,
     target: String,
 }
 
@@ -30,7 +31,10 @@ pub async fn run(
     sonar_project: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
     let git = LocalGitProvider;
     let target_branch = target.unwrap_or(config.fm.default_target.clone());
 
@@ -64,7 +68,7 @@ pub async fn run(
                 }
                 let new_desc = format!("{}{}", wi.description.unwrap_or_default(), sonar_desc);
                 wi = ado
-                    .update_work_item(wi.id, None, Some(&new_desc), None, None)
+                    .update_work_item(&wi.id, None, Some(&new_desc), None, None)
                     .await?;
             }
         }
@@ -72,19 +76,19 @@ pub async fn run(
 
     // 3. Derive branch name
     let branch_name = if let Some(slug) = branch_slug {
-        format!("{}/{}-{}", type_name, wi.id, slug)
+        format!("{}/{}-{}", type_name, wi.id.as_str(), slug)
     } else {
-        ContextManager::derive_branch_name(wi.id, &wi.title, &type_name)
+        ContextManager::derive_branch_name(&wi.id, &wi.title, &type_name)
     };
 
     // 4. Create remote branch
-    ado.create_branch(&config.ado.project, &branch_name, &target_branch)
+    ado.create_branch(&ado_config.project, &branch_name, &target_branch)
         .await?;
 
     // 5. Create draft PR
     let pr = ado
         .create_pull_request(
-            &config.ado.project,
+            &ado_config.project,
             &branch_name,
             &target_branch,
             &title,
@@ -94,14 +98,14 @@ pub async fn run(
         .await?;
 
     // 6. Set WI state to Active
-    ado.update_work_item_state(wi.id, "Active").await?;
+    ado.update_work_item_state(&wi.id, "Active").await?;
 
     // 7. Local checkout
     git.fetch().await?;
     git.checkout_branch(&branch_name).await?;
 
     let result = WorkNewResult {
-        wi_id: wi.id,
+        wi_id: wi.id.to_string(),
         title: wi.title,
         wi_type: wi.work_item_type,
         state: "Active".to_string(),
@@ -121,7 +125,10 @@ pub async fn run(
 
 pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
     let git = LocalGitProvider;
 
     let res = ContextManager::resolve_id(&id);
@@ -131,7 +138,7 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
         _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
     };
 
-    let wi = ado.get_work_item(wi_id).await?;
+    let wi = ado.get_work_item(&wi_id).await?;
     if wi.state == "Closed" || wi.state == "Done" {
         println!("Work Item #{} is {} and cannot be loaded.", wi.id, wi.state);
         return Ok(());
@@ -139,12 +146,8 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
 
     let branch_name = match ContextManager::detect(&id) {
         Context::Activity { branch, .. } => branch,
-        _ => ContextManager::derive_branch_name(wi.id, &wi.title, &wi.work_item_type),
+        _ => ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type),
     };
-
-    // Check if branch exists, if not error out (as per user instructions to use doctor --fix)
-    // Actually, user said "abort on most command, leave only some 'main' command to fix"
-    // So here I should check if I can checkout.
 
     git.fetch().await?;
     if let Err(e) = git.checkout_branch(&branch_name).await {
@@ -152,7 +155,7 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     }
 
     // Ensure Active
-    ado.update_work_item_state(wi.id, "Active").await?;
+    ado.update_work_item_state(&wi.id, "Active").await?;
 
     // Stash restoration
     let stash_name = format!("stash-{}-", wi.id);
@@ -172,31 +175,32 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
 
 pub async fn list(mine: bool, state: String, type_name: String, max: i32) -> Result<()> {
     let config = Config::load()?;
-    let ado = AzureDevOpsProvider::new(&config.ado)?;
+    let ado_config = config
+        .ado_config()
+        .ok_or_else(|| anyhow!("ADO provider not configured"))?;
+    let ado = AzureDevOpsProvider::new(ado_config)?;
 
-    let mut wiql = format!("SELECT [System.Id], [System.Title], [System.WorkItemType], [System.State], [System.AssignedTo] FROM WorkItems WHERE [System.TeamProject] = '{}'", config.ado.project);
-
-    if mine {
-        // This is a simplification, ideally we'd get the current user's email
-        wiql.push_str(" AND [System.AssignedTo] = @Me");
-    }
-
-    if state != "all" {
-        wiql.push_str(&format!(" AND [System.State] = '{}'", state));
-    }
-
-    if type_name != "all" {
+    let filter_state = if state == "all" { None } else { Some(state) };
+    let filter_type = if type_name == "all" {
+        None
+    } else {
         let actual_type = if type_name == "fix" {
             "Bug"
         } else {
             "User Story"
         };
-        wiql.push_str(&format!(" AND [System.WorkItemType] = '{}'", actual_type));
-    }
+        Some(actual_type.to_string())
+    };
 
-    wiql.push_str(" ORDER BY [System.ChangedDate] DESC");
+    let filter = WorkItemFilter {
+        state: filter_state,
+        assigned_to_me: mine,
+        work_item_type: filter_type,
+        limit: Some(max as u32),
+        ..Default::default()
+    };
 
-    let items = ado.query_work_items(&wiql).await?;
+    let items = ado.query_work_items(&filter).await?;
     let limited_items: Vec<_> = items.into_iter().take(max as usize).collect();
 
     println!("| ID | Type | State | Title | Assigned To |");
