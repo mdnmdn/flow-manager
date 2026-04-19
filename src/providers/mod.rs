@@ -139,3 +139,5 @@ pub mod adonet;
 pub mod factory;
 pub mod git;
 pub mod sonar;
+
+pub use sonar::QualityProject;

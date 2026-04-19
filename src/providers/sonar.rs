@@ -61,11 +61,80 @@ impl QualityProvider for SonarProvider {
 
         let mut results = Vec::new();
         for issue in issues {
+            let text_range = issue.get("textRange");
+            let (start_line, end_line, start_offset, end_offset) = text_range
+                .and_then(|tr| {
+                    Some((
+                        tr.get("startLine")?.as_i64().map(|v| v as i32),
+                        tr.get("endLine")?.as_i64().map(|v| v as i32),
+                        tr.get("startOffset")?.as_i64().map(|v| v as i32),
+                        tr.get("endOffset")?.as_i64().map(|v| v as i32),
+                    ))
+                })
+                .unwrap_or((None, None, None, None));
+
             results.push(QualityIssue {
                 key: issue["key"].as_str().unwrap_or_default().to_string(),
                 message: issue["message"].as_str().unwrap_or_default().to_string(),
                 severity: issue["severity"].as_str().unwrap_or_default().to_string(),
                 component: issue["component"].as_str().unwrap_or_default().to_string(),
+                start_line,
+                end_line,
+                start_offset,
+                end_offset,
+            });
+        }
+
+        Ok(results)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QualityProject {
+    pub key: String,
+    pub name: String,
+    pub visibility: String,
+    pub last_analysis: Option<String>,
+}
+
+impl SonarProvider {
+    pub async fn list_projects(
+        &self,
+        search: Option<&str>,
+        favorites: bool,
+    ) -> Result<Vec<QualityProject>> {
+        let endpoint = if favorites {
+            "/api/favorites/search?ps=500".to_string()
+        } else {
+            let q = search.map(|s| format!("&q={}", s)).unwrap_or_default();
+            format!("/api/projects/search?ps=500{}", q)
+        };
+
+        let resp = self
+            .client
+            .get(format!("{}{}", self.url, endpoint))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch SonarQube projects: {}",
+                resp.text().await?
+            ));
+        }
+
+        let body: Value = resp.json().await?;
+        let components = body["components"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No components array in response"))?;
+
+        let mut results = Vec::new();
+        for comp in components {
+            results.push(QualityProject {
+                key: comp["key"].as_str().unwrap_or_default().to_string(),
+                name: comp["name"].as_str().unwrap_or_default().to_string(),
+                visibility: comp["visibility"].as_str().unwrap_or_default().to_string(),
+                last_analysis: comp["lastAnalysisDate"].as_str().map(|s| s.to_string()),
             });
         }
 
@@ -85,6 +154,7 @@ mod tests {
         let config = SonarConfig {
             url: server.url(),
             token: "test-token".to_string(),
+            projects: vec![],
         };
         let provider = SonarProvider::new(&config).unwrap();
 

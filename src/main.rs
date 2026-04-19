@@ -112,11 +112,13 @@ async fn main() -> anyhow::Result<()> {
             message,
             docs_message,
         } => commands::sync::run(message, docs_message).await?,
-        cli::Commands::Sonar {
-            project,
-            severity,
-            max,
-        } => commands::sonar::run(project, severity, max).await?,
+        cli::Commands::Sonar { command } => {
+            let config = fm::core::config::Config::load()?;
+            let sonar_config = config
+                .sonar
+                .ok_or_else(|| anyhow::anyhow!("SonarQube not configured"))?;
+            commands::sonar::run(command, &sonar_config).await?
+        }
         cli::Commands::Doctor { fix } => commands::doctor::run(fix).await?,
         cli::Commands::Init { path, discover } => commands::init::run(path, discover).await?,
         cli::Commands::Plumbing(cmd) => match cmd {

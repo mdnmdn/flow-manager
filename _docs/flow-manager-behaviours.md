@@ -631,16 +631,35 @@ Shorthand for `fm commit --all` + `fm push`. If nothing to commit: prints "Nothi
 
 ## 8. Quality
 
-### `fm sonar`
+### `fm sonar list`
 
 ```
-fm sonar
-  [--project <key>]
-  [--severity <levels>]    e.g. MAJOR,CRITICAL,BLOCKER
-  [--max <n>]              default: 20
+fm sonar list
+  [--search <pattern>]    Wildcard search (*, ?)
+  [--favorites]         Only favorited projects
 ```
 
-Lists open SonarQube issues for a project. Requires `[sonar]` config to be present.
+Lists SonarQube projects. Use `--search` for wildcard filtering.
+
+### `fm sonar issues`
+
+```
+fm sonar issues
+  [--project <key>]      Project key (uses first from config if omitted)
+  [--all]               Fetch all configured projects in parallel
+  [--severity <levels>]  e.g. MAJOR,CRITICAL,BLOCKER
+  [--max <n>]           default: 20
+```
+
+Lists open SonarQube issues. Requires `[sonar]` config. Without `--project`, uses the first project from `[sonar].projects`.
+
+To fetch issues for all configured projects:
+
+```
+fm sonar issues --all
+```
+
+This runs parallel requests for each project in `[sonar].projects`.
 
 ---
 

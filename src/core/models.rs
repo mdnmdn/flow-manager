@@ -53,6 +53,10 @@ pub struct QualityIssue {
     pub message: String,
     pub severity: String,
     pub component: String,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    pub start_offset: Option<i32>,
+    pub end_offset: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

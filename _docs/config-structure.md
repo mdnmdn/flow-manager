@@ -130,14 +130,16 @@ All fields are optional — built-in defaults are used when absent.
 
 ```toml
 [sonar]
-url   = "https://sonar.example.com"
-token = "YOUR_SONAR_TOKEN_HERE"
+url      = "https://sonar.example.com"
+token    = "YOUR_SONAR_TOKEN_HERE"
+projects = ["my-project-1", "my-project-2"]
 ```
 
-| Field   | Type   | Description |
-|---------|--------|-------------|
-| `url`   | string | SonarQube server URL |
-| `token` | string | User or project token |
+| Field     | Type     | Description |
+|-----------|----------|-------------|
+| `url`     | string   | SonarQube server URL |
+| `token`   | string   | User or project token |
+| `projects`| string[] | Default projects for `sonar issues` (optional) |
 
 ---
 

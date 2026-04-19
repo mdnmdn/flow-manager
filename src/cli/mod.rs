@@ -105,19 +105,12 @@ pub enum Commands {
         #[arg(long)]
         docs_message: Option<String>,
     },
-    /// Show SonarQube issues
+    /// Manage SonarQube issues and projects
     // SPECIFICATION:
-    // Show SonarQube issues relevant to the current context.
+    // List projects or show issues.
     Sonar {
-        /// SonarQube project key
-        #[arg(short, long)]
-        project: Option<String>,
-        /// Comma-separated severities
-        #[arg(short, long)]
-        severity: Option<String>,
-        /// Maximum issues
-        #[arg(short, long, default_value_t = 20)]
-        max: i32,
+        #[command(subcommand)]
+        command: SonarCommands,
     },
     /// Run diagnostic checks
     Doctor {
@@ -455,6 +448,34 @@ pub enum GitPlumbingCommands {
 pub enum AdoPlumbingCommands {
     /// Get work item
     WiGet { id: String },
+}
+
+#[derive(Subcommand)]
+pub enum SonarCommands {
+    /// List projects
+    List {
+        /// Wildcard search on project name/key
+        #[arg(short, long)]
+        search: Option<String>,
+        /// Only favorited projects
+        #[arg(short, long)]
+        favorites: bool,
+    },
+    /// Show SonarQube issues
+    Issues {
+        /// SonarQube project key (uses default from config if not provided)
+        #[arg(short, long)]
+        project: Option<String>,
+        /// Fetch issues for all configured projects
+        #[arg(short, long)]
+        all: bool,
+        /// Comma-separated severities
+        #[arg(short, long)]
+        severity: Option<String>,
+        /// Maximum issues per project
+        #[arg(short, long, default_value_t = 20)]
+        max: i32,
+    },
 }
 
 pub fn parse() -> Cli {

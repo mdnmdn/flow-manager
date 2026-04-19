@@ -44,6 +44,8 @@ pub struct GitLabConfig {
 pub struct SonarConfig {
     pub url: String,
     pub token: String,
+    #[serde(default)]
+    pub projects: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
