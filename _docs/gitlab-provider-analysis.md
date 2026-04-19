@@ -21,33 +21,44 @@ This document analyzes the feasibility of implementing a GitLab provider for the
 
 ## 2. Trait Compatibility Analysis
 
+Actual trait signatures (from `src/providers/mod.rs`) and domain models (from `src/core/models.rs`) are referenced throughout this section.
+
 ### `IssueTracker` Trait
 
-*   `query_work_items(wiql: &str)`: **Critical.** WIQL is entirely ADO-specific. GitLab uses a REST API with query parameters (e.g., `state`, `labels`, `milestone`, `assignee_username`) or a GraphQL API for more complex queries.
+*   `get_work_item(id: i32)`, `update_work_item(id: i32, ...)`, `create_artifact_link(wi_id: i32, url: &str)`, `link_work_items(source_id: i32, target_id: i32, ...)`, `get_child_work_items(id: i32, ...)`: All use `i32` for the issue ID. GitLab issue **IIDs** (the per-project sequential integers exposed in the UI and API paths) are integers — **fully compatible** with the current `i32` type. Note: GitLab also has a global numeric `id` distinct from the project-local `iid`; the provider must consistently use `iid`.
+*   `query_work_items(wiql: &str)`: **Critical.** WIQL is entirely ADO-specific. GitLab uses REST query parameters (e.g., `state`, `labels`, `milestone`, `assignee_username`).
     *   *Suggestion:* Replace with a structured `WorkItemFilter` that each provider translates to its native API call. GitLab's filter model maps very naturally to a struct-based approach.
-*   `create_artifact_link(wi_id, url)`: GitLab supports formal "Related Issues" links and auto-close keywords in MR descriptions (`Closes #123`). The provider can implement this by updating the issue description or creating a formal issue link via `/projects/:id/issues/:issue_iid/links`.
-*   `link_work_items(source_id, target_id, relation)`: Maps well to GitLab's Issue Links API (`/issues/:issue_iid/links`), which supports `relates_to`, `blocks`, and `is_blocked_by` relation types — more formal than GitHub, less rigid than ADO.
-*   `get_child_work_items(id, type)`: Maps to GitLab's native child issue support. On free tiers, child issues are managed via the UI but not exposed as a dedicated flat API endpoint; on Premium/Ultimate they are accessible as task relationships.
-*   `update_work_item_state(id, state)`: Maps to the issue state transitions (`opened`/`closed`). Custom workflow states require Premium.
+*   `create_artifact_link(wi_id: i32, url: &str)`: GitLab supports formal "Related Issues" links and auto-close keywords in MR descriptions (`Closes #123`). The provider can implement this via `/projects/:id/issues/:issue_iid/links` or by appending closing keywords to the MR description.
+*   `link_work_items(source_id: i32, target_id: i32, relation: &str)`: Maps to GitLab's Issue Links API (`/issues/:issue_iid/links`), which supports `relates_to`, `blocks`, and `is_blocked_by` relation types — more formal than GitHub, less rigid than ADO.
+*   `get_child_work_items(id: i32, type)`: GitLab supports parent/child issue relationships. On free tiers the API support is limited; Premium/Ultimate exposes them as formal task relationships.
+*   `update_work_item_state(id: i32, state: &str)`: Maps to the `state_event` parameter (`close`/`reopen`) on the Issues API. State transitions in GitLab are direct — no transition-ID lookup step is needed. Custom workflow states require Premium.
 
 ### `VCSProvider` Trait
 
-The `VCSProvider` trait maps well to GitLab's REST and GraphQL APIs:
+The `VCSProvider` trait maps well to GitLab's REST API:
 
-*   **PR Management (MR Management):** `create_pull_request`, `update_pull_request`, `complete_pull_request` map directly to GitLab's `/projects/:id/merge_requests` endpoints. The terminology difference (PR → MR) is internal to the provider implementation.
-*   **Merge Strategies:** `MergeStrategy` maps to GitLab's merge methods: `merge` (standard), `squash` (squash commit), and `rebase_merge`. All three are natively supported by GitLab.
-*   **Draft PRs:** GitLab supports Draft MRs using the `Draft:` title prefix, which maps to the `is_draft` flag.
-*   **Reviewers:** GitLab uses `reviewer_ids` on Merge Requests (available on all tiers since GitLab 13.8).
+*   **PR Management (MR Management):** `create_pull_request`, `update_pull_request`, `complete_pull_request` map directly to GitLab's `/projects/:id/merge_requests` endpoints. The terminology difference (PR → MR) is fully internal to the provider.
+*   **Merge Strategies:** FM's `MergeStrategy` enum has four variants; GitLab exposes three merge methods. The mapping is:
+    | FM `MergeStrategy`  | GitLab method         |
+    |---------------------|-----------------------|
+    | `NoFastForward`     | Merge commit          |
+    | `Squash`            | Squash and merge      |
+    | `RebaseMerge`       | Rebase and merge      |
+    | `Rebase`            | *(no direct equivalent)* |
+    The `Rebase` variant (pure rebase, no merge commit) has no standard GitLab merge method. GitLab does have a `/rebase` quick action but it does not complete the MR. The provider should either map `Rebase` to `RebaseMerge` or reject it with an explicit error.
+*   **Draft PRs:** GitLab supports Draft MRs with a dedicated `draft` boolean field in the API response. Setting `draft: true` on creation maps directly to `is_draft`.
+*   **Reviewers:** GitLab uses `reviewer_ids` (numeric user IDs) on MRs, available on all tiers since GitLab 13.8. The `add_reviewer(repository, id, reviewer_id: &str)` signature accepts a string, so numeric IDs stored as strings work fine.
 *   **Delete Source Branch:** Natively supported via `should_remove_source_branch` on MR completion.
 
 ### `PipelineProvider` Trait
 
-GitLab CI/CD provides a comprehensive API:
+GitLab CI/CD provides a comprehensive API, but the pipeline abstraction requires care:
 
-*   `list_pipelines`: Maps to `/projects/:id/pipelines` (list pipeline runs) or for pipeline *definitions*, inspecting `.gitlab-ci.yml` for job/stage names. A single project has one pipeline definition (the YAML), making the concept of "listing pipeline definitions" less relevant than in ADO.
-*   `run_pipeline`: Maps to `/projects/:id/pipeline` (POST to trigger) or via pipeline triggers and the Trigger API.
-*   `get_pipeline_run`: Maps to `/projects/:id/pipelines/:pipeline_id`.
-*   `get_run_status`: Pipeline status values (`created`, `waiting_for_resource`, `preparing`, `pending`, `running`, `success`, `failed`, `canceled`, `skipped`, `manual`, `scheduled`) are richer than ADO's and need mapping to FM's internal status model.
+*   `list_pipelines() -> Vec<Pipeline>`: The `Pipeline` struct has `{ id: i32, name: String, folder: String }`. GitLab has no named pipeline definitions — a project has one `.gitlab-ci.yml`. The provider can return the most recent pipeline runs as synthetic "definitions" (using the run ID and branch/ref as name), but this is a semantic mismatch with ADO. A synthetic single entry representing the project's CI configuration may be more honest.
+*   `run_pipeline(pipeline_id: i32, branch: &str)`: GitLab triggers a new pipeline via `POST /projects/:id/pipeline` with `{ ref: branch }`. The `pipeline_id` argument has no equivalent — triggering does not reference a prior run. The provider should ignore `pipeline_id` (or use a sentinel value `0`) and trigger on the branch alone.
+*   `get_latest_run(branch: &str) -> Option<PipelineRun>`: Maps to `GET /projects/:id/pipelines?ref=branch&order_by=id&sort=desc&per_page=1`.
+*   `get_run_status(run_id: i32) -> PipelineRun`: Maps to `GET /projects/:id/pipelines/:pipeline_id`. GitLab pipeline IDs are integers — **compatible** with `i32`.
+*   Pipeline status values (`created`, `waiting_for_resource`, `pending`, `running`, `success`, `failed`, `canceled`, `skipped`, `manual`, `scheduled`) are richer than ADO's and must be mapped to FM's internal `PipelineRun.status: String` field.
 
 ## 3. Critical Points & Challenges
 
@@ -70,7 +81,10 @@ GitLab uses Personal Access Tokens (PAT), OAuth 2.0, or Job tokens (for CI). The
 Many enterprises run self-hosted GitLab instances. The configuration must support a custom `base_url` rather than hardcoding `https://gitlab.com`. This is similar to the ADO organization URL pattern already present.
 
 ### 7. Pipeline Model Difference
-ADO Pipelines have distinct named "Pipeline Definitions" with integer IDs. In GitLab, a project has a single `.gitlab-ci.yml` that defines all jobs/stages. The `list_pipelines()` abstraction could return recent pipeline runs or a synthetic list of named CI/CD jobs instead.
+ADO Pipelines have distinct named "Pipeline Definitions" with integer IDs. In GitLab, a project has a single `.gitlab-ci.yml` that defines all jobs/stages. The `run_pipeline(pipeline_id: i32, branch: &str)` signature takes a definition ID that has no GitLab equivalent — the provider must treat `pipeline_id` as irrelevant and always trigger by branch. The `list_pipelines()` abstraction should return a synthetic single entry or recent run history rather than definitions.
+
+### 8. `MergeStrategy::Rebase` Gap
+The FM `MergeStrategy` enum includes a `Rebase` variant with no direct GitLab merge method equivalent. The GitLab provider must document and handle this case — either mapping it to `RebaseMerge` or returning an unsupported error.
 
 ## 4. Suggested Refactorings
 

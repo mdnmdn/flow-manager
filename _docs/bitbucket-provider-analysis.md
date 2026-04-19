@@ -21,33 +21,45 @@ This document analyzes the feasibility of implementing a Bitbucket provider for 
 
 ## 2. Trait Compatibility Analysis
 
+Actual trait signatures (from `src/providers/mod.rs`) and domain models (from `src/core/models.rs`) are referenced throughout this section.
+
 ### `IssueTracker` Trait
 
-*   `query_work_items(wiql: &str)`: **Critical.** WIQL is ADO-specific. Jira uses its own query language **JQL (Jira Query Language)**, which is also a SQL-like DSL (e.g., `project = "PROJ" AND status = "In Progress" AND assignee = currentUser()`). While JQL is more powerful and widespread than WIQL, it is still provider-specific.
-    *   *Suggestion:* Replace with a structured `WorkItemFilter`. Jira's REST API v3 also supports structured filters via `POST /rest/api/3/issue/picker` or `POST /rest/api/3/jql/parse`, so a struct-based approach is viable.
-*   `create_artifact_link(wi_id, url)`: **Strong native support.** The Jira–Bitbucket integration automatically populates the Development Panel (branches, PRs, commits) when the Jira issue key appears in the branch name or commit message (Smart Commits). The provider can also use the Jira Remote Links API (`POST /rest/api/3/issue/{issueIdOrKey}/remotelink`) for explicit linking.
-*   `link_work_items(source_id, target_id, relation)`: Maps to Jira's Issue Link API (`POST /rest/api/3/issueLink`). Jira supports rich link types: `blocks`, `is blocked by`, `duplicates`, `relates to`, `clones`, etc., defined per Jira instance.
-*   `get_child_work_items(id, type)`: Maps to Jira Subtasks (querying issues with `parent = PROJ-123`) or child issues in next-gen projects. Easily implemented via a JQL query.
-*   `update_work_item_state(id, state)`: Maps to Jira transitions (`POST /rest/api/3/issue/{issueIdOrKey}/transitions`). Unlike ADO/GitLab where state is set directly, Jira requires fetching available transitions first and posting a transition ID.
+*   `get_work_item(id: i32)`, `update_work_item(id: i32, ...)`, `create_artifact_link(wi_id: i32, url: &str)`, `link_work_items(source_id: i32, target_id: i32, ...)`, `get_child_work_items(id: i32, ...)`: **Breaking incompatibility.** Every `IssueTracker` method takes `id: i32`. Jira issue keys are alphanumeric strings like `PROJ-123`. This is a **pervasive type-level conflict** — not just a branch-naming issue. Changing `i32` to a `WorkItemId(String)` newtype (or `String`) in the trait and in `WorkItem.id` is a prerequisite for any Jira integration.
+*   `Context::Activity { wi_id: i32, ... }` in `src/core/context.rs` also uses `i32`, meaning the context resolution logic must be updated alongside the trait.
+*   `query_work_items(wiql: &str)`: **Critical.** WIQL is ADO-specific. Jira uses **JQL** (`project = "PROJ" AND status = "In Progress" AND assignee = currentUser()`). JQL cannot use `username` or `userKey` — Jira Cloud v3 requires `accountId` UUIDs in queries (confirmed breaking change in Jira's API).
+    *   *Suggestion:* Replace with a structured `WorkItemFilter`. Jira's REST API v3 supports structured filters; the provider builds a JQL string internally.
+*   `create_artifact_link(wi_id: i32, url: &str)`: **Strong native support** once the ID type issue is resolved. The Jira Remote Links API (`POST /rest/api/3/issue/{issueIdOrKey}/remotelink`) handles explicit linking. The Jira–Bitbucket integration also auto-populates the Development Panel when the issue key appears in the branch name or commit (Smart Commits).
+*   `link_work_items(source_id: i32, target_id: i32, relation: &str)`: Maps to Jira's Issue Link API (`POST /rest/api/3/issueLink`). Jira supports rich link types: `blocks`, `is blocked by`, `duplicates`, `relates to`, `clones`, etc. Again blocked by the `i32` ID type.
+*   `get_child_work_items(id: i32, type)`: Maps to Jira Subtasks via a JQL query `parent = PROJ-123`. Blocked by the `i32` ID type.
+*   `update_work_item_state(id: i32, state: &str)`: Maps to Jira transitions. Unlike ADO/GitLab where state is a direct field assignment, Jira requires a two-step process: `GET /transitions` to list available transitions from the current state, then `POST /transitions` with the transition ID. This must be hidden inside the implementation.
+*   `WorkItem.assigned_to: Option<String>`: ADO and GitLab store email or display name. Jira Cloud v3 requires `accountId` (a UUID), not email. The `assigned_to` field must store the accountId, and a lookup step (email → accountId via `/rest/api/3/user/search`) is needed if users are specified by email.
 
 ### `VCSProvider` Trait
 
 Bitbucket Cloud's REST API (v2.0) provides good coverage:
 
 *   **PR Management:** `create_pull_request`, `update_pull_request`, `complete_pull_request` map to `/repositories/{workspace}/{repo_slug}/pullrequests` endpoints. Direct mapping.
-*   **Merge Strategies:** `MergeStrategy` maps to Bitbucket's merge strategies: `merge_commit`, `squash`, `fast_forward`. The `rebase_merge` strategy exists only via `fast_forward` in Bitbucket.
-*   **Draft PRs:** Bitbucket Cloud does not have a formal "Draft PR" feature (as of 2024). A workaround is a `[WIP]` prefix in the title, which lacks API-level enforcement.
-*   **Reviewers:** Bitbucket uses `reviewers` array with `account_id` or `uuid`, similar to GitHub/GitLab.
+*   **Merge Strategies:** FM's `MergeStrategy` enum has four variants; Bitbucket Cloud has three: `merge_commit` (standard `git merge --no-ff`), `fast_forward`, and `rebase_merge`. The mapping is:
+    | FM `MergeStrategy`  | Bitbucket strategy    |
+    |---------------------|-----------------------|
+    | `NoFastForward`     | `merge_commit`        |
+    | `Rebase`            | `fast_forward`        |
+    | `RebaseMerge`       | `rebase_merge`        |
+    | `Squash`            | *(not supported)*     |
+    Bitbucket Cloud has **no squash merge strategy**. The `Squash` variant must either be rejected with an error or fall back to `merge_commit`.
+*   **Draft PRs:** Bitbucket Cloud **does** support Draft PRs natively. Draft PRs prevent merging and suppress reviewer notifications until marked as ready. The `is_draft` flag maps directly.
+*   **Reviewers:** Bitbucket uses `reviewers` array with `account_id` (UUID) — consistent with Jira's accountId requirement. The `add_reviewer(repository, id, reviewer_id: &str)` signature accommodates this as a string.
 *   **Delete Source Branch:** Supported via `close_source_branch` field on PR creation/completion.
 
 ### `PipelineProvider` Trait
 
-Bitbucket Pipelines API covers the core needs:
+Bitbucket Pipelines API covers most needs but has a critical ID incompatibility:
 
-*   `list_pipelines`: Maps to `/repositories/{workspace}/{repo_slug}/pipelines/` (list of runs). For pipeline *definitions*, pipelines are defined as named steps in `bitbucket-pipelines.yml`; there is no separate API for listing definitions.
-*   `run_pipeline`: Maps to `POST /repositories/{workspace}/{repo_slug}/pipelines/` with a target specifying branch/commit.
-*   `get_pipeline_run`: Maps to `/repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}`.
-*   `get_run_status`: Pipeline states (`PENDING`, `IN_PROGRESS`, `PAUSED`, `SUCCESSFUL`, `FAILED`, `ERROR`, `STOPPED`) must be mapped to FM's internal status model.
+*   `list_pipelines() -> Vec<Pipeline>`: The FM `Pipeline` struct has `{ id: i32, name: String, folder: String }`. Bitbucket pipelines are defined in `bitbucket-pipelines.yml` with no separate definition API. The provider can return a synthetic list of recent runs or named pipeline steps, but Bitbucket pipeline IDs are **UUIDs** (`pipeline_uuid`), not integers. `Pipeline.id: i32` is **incompatible**.
+*   `run_pipeline(pipeline_id: i32, branch: &str) -> PipelineRun`: Maps to `POST /repositories/{workspace}/{repo_slug}/pipelines/` with a branch target. The `pipeline_id` parameter has no Bitbucket equivalent; the provider ignores it. However `PipelineRun.id: i32` cannot store a UUID.
+*   `get_run_status(run_id: i32) -> PipelineRun`: Maps to `GET /repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}`. **Incompatible** — `run_id: i32` cannot represent a UUID.
+*   Pipeline states (`PENDING`, `IN_PROGRESS`, `PAUSED`, `SUCCESSFUL`, `FAILED`, `ERROR`, `STOPPED`) must be mapped to FM's internal `PipelineRun.status: String` field.
 
 For **Bamboo** (Atlassian's enterprise CI server), a separate implementation would be required using the Bamboo REST API. This is a significant scope addition and should be treated as a separate `BambooProvider`.
 
@@ -60,8 +72,8 @@ The most significant architectural challenge: ADO is a monolithic platform where
 
 The `Config` struct and provider factory must accommodate a "compound provider" where `IssueTracker` is backed by Jira and `VCSProvider` is backed by Bitbucket, each with independent credentials and URLs.
 
-### 2. Jira Issue Key Format
-ADO Work Items and GitHub Issues use plain integers for IDs. Jira uses alphanumeric keys (`PROJ-123`). The FM branch naming convention `feature/{id}-slug` would need to accommodate keys like `feature/PROJ-123-slug`. The `parse_wi_id_from_branch` function in `src/core/` must be updated to handle both numeric IDs and `[A-Z]+-\d+` patterns.
+### 2. Jira Issue Key Format — Pervasive `i32` Incompatibility
+Every `IssueTracker` trait method uses `id: i32`, and `WorkItem.id` and `Context::Activity.wi_id` are also `i32`. Jira issue keys are `PROJ-123` strings. This requires changing the ID type to `String` (or a newtype) across the trait, the `WorkItem` model, the `Context` enum, and `parse_wi_id_from_branch` in `src/core/context.rs`. This is the single largest required change for Jira support and touches every existing provider and command.
 
 ### 3. Jira State Transitions
 Unlike direct state assignment (`update_work_item_state`), Jira requires a two-step process:
@@ -76,13 +88,16 @@ ADO and most providers use email addresses to identify users. Jira Cloud's v3 AP
 ### 5. Bitbucket Workspace Identifier
 Bitbucket Cloud uses a `workspace` + `repo_slug` pair to identify repositories (e.g., `mycompany/my-repo`). This is analogous to GitHub's `owner/repo` and different from ADO's `organization/project/repo` triple.
 
-### 6. No Draft PR Support
-Bitbucket Cloud lacks a native Draft PR feature. If FM relies on draft PRs as part of the activity lifecycle (e.g., `fm work new` creates a draft PR), the Bitbucket provider must either skip this step or emulate it with a `[WIP]` prefix convention.
+### 6. Pipeline UUID Incompatibility
+Bitbucket pipeline run IDs are UUIDs. Both `PipelineProvider::run_pipeline(pipeline_id: i32)` and `get_run_status(run_id: i32)`, as well as the `PipelineRun.id: i32` field in the domain model, are fundamentally incompatible with UUIDs. Supporting Bitbucket pipelines requires either changing `PipelineRun.id` to `String` or maintaining a UUID-to-integer mapping layer (not recommended).
 
-### 7. Bitbucket Server / Data Center
+### 7. No Squash Merge Strategy
+FM's `MergeStrategy::Squash` variant has no equivalent in Bitbucket Cloud. The provider must either refuse this option with an explicit error or silently fall back to `merge_commit`. This should be surfaced via a `SupportedFeatures` capability mechanism (see Suggested Refactorings).
+
+### 8. Bitbucket Server / Data Center
 Enterprises may use Bitbucket Server (self-hosted) or Bitbucket Data Center. The API differs from Bitbucket Cloud in several ways. A separate implementation or strong abstraction would be needed. Scope for an initial implementation should target Bitbucket Cloud only.
 
-### 8. Smart Commits and Jira Integration
+### 9. Smart Commits and Jira Integration
 The Jira–Bitbucket Smart Commits feature (e.g., `git commit -m "PROJ-123 #in-progress Fixed bug"`) provides a native mechanism that partially overlaps with FM's `create_artifact_link`. The provider can leverage this pattern by ensuring branch names and commit messages follow the Smart Commit format.
 
 ## 4. Suggested Refactorings
@@ -90,8 +105,8 @@ The Jira–Bitbucket Smart Commits feature (e.g., `git commit -m "PROJ-123 #in-p
 1.  **Compound Provider Support:**
     The provider factory must support composing an `IssueTracker` (Jira) with a `VCSProvider` (Bitbucket) independently. Introduce a `ProviderSet` struct that holds separate trait objects for each concern.
 
-2.  **Generic WI ID Type:**
-    The `WorkItemId` type should be a `String` (or a newtype wrapping `String`) rather than an integer to accommodate Jira's `PROJ-123` format. The `parse_wi_id_from_branch` function needs a regex that handles both `\d+` and `[A-Z]+-\d+`.
+2.  **Generic WI ID Type (mandatory):**
+    Change `WorkItem.id`, `Context::Activity.wi_id`, and every `IssueTracker` method parameter from `i32` to `String` (or a `WorkItemId(String)` newtype). Update `parse_wi_id_from_branch` to handle both `\d+` and `[A-Z]+-\d+` patterns. This change cascades through all existing providers and commands and should be done as a single preparatory refactor before adding any new provider.
 
 3.  **State Transition Abstraction:**
     The `update_work_item_state` method signature can remain as-is, but the Jira implementation must internally perform the transition lookup. Add an optional `get_available_transitions(id)` method to the trait for providers that need it.
@@ -102,16 +117,20 @@ The Jira–Bitbucket Smart Commits feature (e.g., `git commit -m "PROJ-123 #in-p
 5.  **User Identity Abstraction:**
     Introduce a `UserId` enum (`Email(String)` | `AccountId(String)`) to handle both ADO/GitLab email-based identification and Jira's UUID-based system.
 
-6.  **Draft PR Fallback:**
-    Add a `SupportedFeatures` capability flags struct per provider so FM can gracefully degrade when a provider doesn't support a feature (e.g., draft PRs).
+6.  **Capability Flags (`SupportedFeatures`):**
+    Add a `SupportedFeatures` struct per provider to signal missing capabilities (e.g., `Squash` merge strategy). This allows FM command logic to gracefully degrade or report an error rather than sending an unsupported API call.
+
+7.  **Pipeline ID type (mandatory):**
+    Change `PipelineRun.id` and `Pipeline.id` from `i32` to `String` to accommodate Bitbucket's UUID-based pipeline identifiers. `PipelineProvider::run_pipeline` and `get_run_status` signatures must be updated accordingly.
 
 ## 5. Conclusion
 
 Implementing a Bitbucket/Atlassian provider is **feasible but architecturally more complex** than GitHub or GitLab due to:
 
 1.  The split between Jira (issue tracking) and Bitbucket (VCS/Pipelines) requiring a compound provider approach in the `Config` and factory layer.
-2.  Jira's alphanumeric issue keys requiring changes to the branch naming parser and potentially the FM branch convention.
-3.  Jira's transition-based state model requiring the provider to hide multi-step state changes.
-4.  The absence of Draft PR support in Bitbucket Cloud requiring graceful degradation.
+2.  Jira's alphanumeric issue keys requiring **pervasive `i32` → `String` changes** across the `IssueTracker` trait, `WorkItem` model, `Context` enum, and all existing command logic.
+3.  Jira's transition-based state model requiring multi-step state changes hidden inside the implementation.
+4.  Bitbucket's UUID pipeline IDs requiring `PipelineRun.id` to change from `i32` to `String`.
+5.  The `MergeStrategy::Squash` variant having no Bitbucket equivalent.
 
-The Bitbucket VCS and Pipeline API surface itself is straightforward and maps cleanly to the existing traits. The primary investment is in the Jira issue tracker integration and the compound provider architecture. Targeting **Bitbucket Cloud + Jira Cloud** with the v2/v3 REST APIs is recommended as the first milestone, deferring Bitbucket Server/Data Center and Bamboo support.
+The Bitbucket VCS and Pipeline REST API surfaces are otherwise well-structured and map cleanly to the existing traits. Draft PRs are natively supported. The primary investment is in the Jira issue tracker integration, the compound provider architecture, and the two mandatory type-level changes (`WorkItemId` and `PipelineRunId`). Targeting **Bitbucket Cloud + Jira Cloud** with the v2/v3 REST APIs is recommended as the first milestone, deferring Bitbucket Server/Data Center and Bamboo support.
