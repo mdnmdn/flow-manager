@@ -117,7 +117,6 @@ impl AzureDevOpsProvider {
                 "System.WorkItemType",
                 "System.State",
                 "System.Description",
-                "Microsoft.VSTS.TCM.ReproductionSteps",
                 "System.AssignedTo",
                 "System.Tags"
             ]
@@ -912,7 +911,6 @@ mod tests {
                     "System.WorkItemType",
                     "System.State",
                     "System.Description",
-                    "Microsoft.VSTS.TCM.ReproductionSteps",
                     "System.AssignedTo",
                     "System.Tags"
                 ]
@@ -987,7 +985,6 @@ mod tests {
                     "System.WorkItemType",
                     "System.State",
                     "System.Description",
-                    "Microsoft.VSTS.TCM.ReproductionSteps",
                     "System.AssignedTo",
                     "System.Tags"
                 ]

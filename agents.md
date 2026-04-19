@@ -8,14 +8,14 @@ Flow Manager (`fm`) is a Rust-based CLI tool designed to automate and simplify t
 - `src/commands/`: Implementation of porcelain and plumbing commands.
 - `src/core/`: Core business logic, context management, and domain models.
 - `src/providers/`: Interfaces and implementations for external providers (starting with Azure DevOps).
-- `_docs/`: Documentation and proposals.
-    - [`command-specifications.md`](_docs/command-specifications.md): Summarizes expected commands and features.
-    - [`component-specification.md`](_docs/component-specification.md): Breaks down high-level commands into low-level component requirements.
-    - [`porcelain-commands-proposal.md`](_docs/porcelain-commands-proposal.md): Detailed proposal for high-level workflow commands.
-    - [`project-structure.md`](_docs/project-structure.md): Overview of the project architecture and directory layout.
-    - [`github-provider-analysis.md`](_docs/github-provider-analysis.md): Feasibility analysis for implementing a GitHub provider.
-    - [`gitlab-provider-analysis.md`](_docs/gitlab-provider-analysis.md): Feasibility analysis for implementing a GitLab provider.
-    - [`bitbucket-provider-analysis.md`](_docs/bitbucket-provider-analysis.md): Feasibility analysis for implementing a Bitbucket/Atlassian (Jira + Bitbucket) provider.
+- `_docs/`: Documentation.
+    - [`flow-manager-behaviours.md`](_docs/flow-manager-behaviours.md): Authoritative reference for every command — steps, output, and behaviour.
+    - [`component-specification.md`](_docs/component-specification.md): Provider traits, LocalGitProvider utilities, and internal coordination.
+    - [`project-structure.md`](_docs/project-structure.md): Architecture, directory layout, and design principles.
+    - [`config-structure.md`](_docs/config-structure.md): Full config reference and environment variable mapping.
+    - [`github-provider-analysis.md`](_docs/multiprovider/github-provider-analysis.md): Feasibility analysis for a GitHub provider.
+    - [`gitlab-provider-analysis.md`](_docs/multiprovider/gitlab-provider-analysis.md): Feasibility analysis for a GitLab provider.
+    - [`bitbucket-provider-analysis.md`](_docs/multiprovider/bitbucket-provider-analysis.md): Feasibility analysis for a Bitbucket/Atlassian provider.
 
 ## Key Concepts
 - **Context:** The tool determines if you are in a "Baseline" context (shared branch) or "Activity" context (feature/fix branch linked to a Work Item).
