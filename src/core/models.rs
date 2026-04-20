@@ -66,6 +66,7 @@ pub struct PullRequestComment {
     pub content: String,
     pub created_at_date: Option<String>,
     pub created_at_time: Option<String>,
+    pub replies: Vec<PullRequestComment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -15,21 +15,25 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Manage the current activity
+    #[command(alias = "t")]
     Task {
         #[command(subcommand)]
         command: TaskCommands,
     },
     /// Manage pull requests
+    #[command(alias = "p")]
     Pr {
         #[command(subcommand)]
         command: PrCommands,
     },
     /// Manage pipelines
+    #[command(aliases = ["pl", "pipe"])]
     Pipeline {
         #[command(subcommand)]
         command: PipelineCommands,
     },
     /// Manage child tasks
+    #[command(alias = "td")]
     Todo {
         #[command(subcommand)]
         command: TodoCommands,
@@ -43,6 +47,7 @@ pub enum Commands {
     //     b. Find PR for this branch (state, draft, mergeable, reviewer count).
     //     c. Run git status and git log ahead/behind.
     //     d. Fetch latest CI pipeline run for this branch.
+    #[command(alias = "ctx")]
     Context {
         /// Show only work item details
         #[arg(short, long)]
@@ -67,6 +72,7 @@ pub enum Commands {
     // - If _docs has unpushed commits: push _docs first.
     // - Then commit the main repo, updating the submodule pointer if needed.
     // - Auto-generate message from WI if omitted.
+    #[command(alias = "c")]
     Commit {
         /// Commit message
         #[arg(short, long)]
@@ -89,6 +95,7 @@ pub enum Commands {
     // Push current branch to remote, with submodule-awareness.
     // - Checks _docs for unpushed commits.
     // - Push _docs first if needed, then stage and commit pointer.
+    #[command(alias = "pu")]
     Push {
         /// Use --force-with-lease
         #[arg(short, long)]
@@ -100,6 +107,7 @@ pub enum Commands {
     /// Commit and push in one step
     // SPECIFICATION:
     // Shorthand for fm commit --all && fm push.
+    #[command(alias = "s")]
     Sync {
         /// Commit message
         #[arg(short, long)]
@@ -111,20 +119,23 @@ pub enum Commands {
     /// Manage SonarQube issues and projects
     // SPECIFICATION:
     // List projects or show issues.
+    #[command(alias = "sq")]
     Sonar {
         #[command(subcommand)]
         command: SonarCommands,
     },
     /// Run diagnostic checks
+    #[command(alias = "dr")]
     Doctor {
         /// Attempt to fix broken invariants
         #[arg(short, long)]
         fix: bool,
     },
     /// Low-level plumbing commands
-    #[command(subcommand)]
+    #[command(subcommand, alias = "plumb")]
     Plumbing(PlumbingCommands),
     /// Initialize a new configuration file
+    #[command(alias = "i")]
     Init {
         /// Output file path (default: fm.toml)
         #[arg(short, long)]
@@ -148,6 +159,7 @@ pub enum TaskCommands {
     // 5. Create draft PR linked to WI.
     // 6. Set WI state to Active.
     // 7. git fetch && git checkout branch.
+    #[command(alias = "n")]
     New {
         /// Work item title
         #[arg(short, long)]
@@ -159,16 +171,16 @@ pub enum TaskCommands {
         #[arg(short, long)]
         branch: Option<String>,
         /// feature or fix
-        #[arg(short, long, default_value = "feature")]
+        #[arg(long, default_value = "feature")]
         type_name: String,
         /// Target baseline branch
-        #[arg(short, long)]
+        #[arg(long)]
         target: Option<String>,
         /// Assigned-to
         #[arg(short, long)]
         assigned_to: Option<String>,
         /// Semicolon-separated tags
-        #[arg(short, long)]
+        #[arg(long)]
         tags: Option<String>,
         /// SonarQube project key
         #[arg(short, long)]
@@ -184,6 +196,7 @@ pub enum TaskCommands {
     //    - Set WI Active.
     //    - git fetch && git checkout branch.
     //    - Restore stash named stash-{wi-id}-staged / stash-{wi-id}-unstaged.
+    #[command(alias = "l")]
     Load {
         /// WI id, PR id, or branch name
         id: String,
@@ -194,6 +207,7 @@ pub enum TaskCommands {
     /// List work items
     // SPECIFICATION:
     // Runs WIQL query scoped to the ADO project with the given filters.
+    #[command(alias = "ls")]
     List {
         /// Filter by current user
         #[arg(short, long)]
@@ -212,6 +226,7 @@ pub enum TaskCommands {
     // SPECIFICATION:
     // Display detailed work item information, optionally with comments.
     // Without id: shows the current activity work item (error if not in Activity context).
+    #[command(alias = "sh")]
     Show {
         /// WI id, PR id, or branch name (optional, uses current context if omitted)
         id: Option<String>,
@@ -226,6 +241,7 @@ pub enum TaskCommands {
     // SPECIFICATION:
     // 1. Derive WI from current branch.
     // 2. Add comment via the issue tracker API.
+    #[command(alias = "c")]
     Comment {
         /// Comment text
         #[arg(short, long)]
@@ -238,6 +254,7 @@ pub enum TaskCommands {
     // 3. If dirty: auto-stash (staged to stash-{wi-id}-staged, unstaged to stash-{wi-id}-unstaged).
     //    Use --force to discard instead of stashing.
     // 4. git push, then switch to baseline.
+    #[command(alias = "h")]
     Hold {
         /// Discard uncommitted changes instead of stashing
         #[arg(long)]
@@ -249,6 +266,7 @@ pub enum TaskCommands {
     /// Update the work item linked to the current activity
     // SPECIFICATION:
     // Apply requested fields via ADO WI PATCH.
+    #[command(alias = "u")]
     Update {
         /// New title
         #[arg(long)]
@@ -270,6 +288,7 @@ pub enum TaskCommands {
     // SPECIFICATION:
     // 1. Verify WI closed and PR merged/abandoned.
     // 2. Switch to baseline, git pull.
+    #[command(alias = "done")]
     Complete,
     /// Sync the activity branch with the baseline
     // SPECIFICATION:
@@ -278,6 +297,7 @@ pub enum TaskCommands {
     // - Default: git merge origin/{target}.
     // - --rebase: git rebase origin/{target}.
     // - Conflicts: exit and let user resolve.
+    #[command(alias = "sy")]
     Sync {
         /// Use rebase instead of merge
         #[arg(long)]
@@ -293,6 +313,7 @@ pub enum PrCommands {
     /// Show PR details
     // SPECIFICATION:
     // Fetch PR details: title, state, draft, reviewers, merge status, linked WIs.
+    #[command(alias = "sh")]
     Show {
         /// PR id, WI id, or branch
         id: Option<String>,
@@ -306,6 +327,7 @@ pub enum PrCommands {
     /// Add a comment to a PR
     // SPECIFICATION:
     // Add a comment to the PR.
+    #[command(alias = "c")]
     Comment {
         /// PR id, WI id, or branch (optional, uses current context if omitted)
         id: Option<String>,
@@ -317,6 +339,7 @@ pub enum PrCommands {
     // SPECIFICATION:
     // Apply requested changes via ADO PR PATCH.
     // - --publish: isDraft=false.
+    #[command(alias = "u")]
     Update {
         /// New title
         #[arg(long)]
@@ -340,6 +363,7 @@ pub enum PrCommands {
     // - Error if draft.
     // - Error if not mergeable.
     // - Complete PR and Close WI.
+    #[command(alias = "m")]
     Merge {
         /// Merge strategy
         #[arg(long)]
@@ -356,6 +380,7 @@ pub enum PrCommands {
     // 1. Auto-stash current activity if dirty.
     // 2. Resolve ID to PR and its branch.
     // 3. git fetch && git checkout pr-branch.
+    #[command(alias = "r")]
     Review {
         /// PR id, WI id, or branch
         id: String,
@@ -367,6 +392,7 @@ pub enum PipelineCommands {
     /// Run a pipeline for the current branch
     // SPECIFICATION:
     // Trigger a CI pipeline for the current branch.
+    #[command(alias = "r")]
     Run {
         /// Pipeline definition ID
         #[arg(long)]
@@ -376,6 +402,7 @@ pub enum PipelineCommands {
     // SPECIFICATION:
     // Show the latest CI run status for the current branch.
     // - --watch: poll until completed.
+    #[command(alias = "st")]
     Status {
         /// Run ID
         #[arg(long)]
@@ -391,6 +418,7 @@ pub enum TodoCommands {
     /// Show todos
     // SPECIFICATION:
     // List all child Tasks (todos) of the current User Story.
+    #[command(alias = "sh")]
     Show {
         /// Include closed items
         #[arg(long)]
@@ -402,6 +430,7 @@ pub enum TodoCommands {
     /// Create a todo
     // SPECIFICATION:
     // Add a new child Task under the current User Story.
+    #[command(alias = "n")]
     New {
         /// Todo title
         #[arg(long)]
@@ -419,6 +448,7 @@ pub enum TodoCommands {
     /// Set a todo Active
     // SPECIFICATION:
     // Set a todo to Active.
+    #[command(alias = "p")]
     Pick {
         /// Task id or title fragment
         reference: String,
@@ -426,6 +456,7 @@ pub enum TodoCommands {
     /// Set a todo Closed
     // SPECIFICATION:
     // Set a todo to Closed.
+    #[command(alias = "done")]
     Complete {
         /// Task id or title fragment
         reference: String,
@@ -433,6 +464,7 @@ pub enum TodoCommands {
     /// Set a todo back to New
     // SPECIFICATION:
     // Set a todo back to New.
+    #[command(alias = "ro")]
     Reopen {
         /// Task id or title fragment
         reference: String,
@@ -440,6 +472,7 @@ pub enum TodoCommands {
     /// Update a todo
     // SPECIFICATION:
     // Update a todo's title, description, or assignment.
+    #[command(alias = "u")]
     Update {
         /// Task id or title fragment
         reference: String,
@@ -459,6 +492,7 @@ pub enum TodoCommands {
     /// Show the next New todo
     // SPECIFICATION:
     // Show the next open todo (creation order).
+    #[command(alias = "nx")]
     Next {
         /// Set Active immediately
         #[arg(long)]
@@ -495,6 +529,7 @@ pub enum AdoPlumbingCommands {
 #[derive(Subcommand)]
 pub enum SonarCommands {
     /// List projects
+    #[command(alias = "ls")]
     List {
         /// Wildcard search on project name/key
         #[arg(short, long)]
@@ -504,6 +539,7 @@ pub enum SonarCommands {
         favorites: bool,
     },
     /// Show SonarQube issues
+    #[command(alias = "iss")]
     Issues {
         /// SonarQube project key (uses default from config if not provided)
         #[arg(short, long)]

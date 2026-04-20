@@ -1855,30 +1855,36 @@ impl VCSProvider for AzureDevOpsProvider {
             return Ok(vec![]);
         }
         let body: Value = resp.json().await?;
+        let parse_comment = |c: &Value| -> Option<PullRequestComment> {
+            let created = c["publishedDate"].as_str()?;
+            let (date, time) = created
+                .split_once('T')
+                .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
+                .unwrap_or((created.to_string(), String::new()));
+            Some(PullRequestComment {
+                id: c["id"].as_i64()?.to_string(),
+                author: c["author"]["displayName"]
+                    .as_str()
+                    .or_else(|| c["author"]["uniqueName"].as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                created_at: created.to_string(),
+                content: c["content"].as_str().unwrap_or("").to_string(),
+                created_at_date: Some(date),
+                created_at_time: Some(time),
+                replies: vec![],
+            })
+        };
         let threads: Vec<_> = body["value"]
             .as_array()
             .map(|arr| {
                 arr.iter()
                     .filter_map(|t| {
                         let comments = t["comments"].as_array()?;
-                        let first_comment = comments.first()?;
-                        let created = first_comment["publishedDate"].as_str()?;
-                        let (date, time) = created
-                            .split_once('T')
-                            .map(|(d, t)| (d.to_string(), t.trim_end_matches("Z").to_string()))
-                            .unwrap_or((created.to_string(), String::new()));
-                        Some(PullRequestComment {
-                            id: first_comment["id"].as_i64()?.to_string(),
-                            author: first_comment["author"]["displayName"]
-                                .as_str()
-                                .or_else(|| first_comment["author"]["uniqueName"].as_str())
-                                .unwrap_or("unknown")
-                                .to_string(),
-                            created_at: created.to_string(),
-                            content: first_comment["content"].as_str().unwrap_or("").to_string(),
-                            created_at_date: Some(date),
-                            created_at_time: Some(time),
-                        })
+                        let mut iter = comments.iter();
+                        let mut root = parse_comment(iter.next()?)?;
+                        root.replies = iter.filter_map(parse_comment).collect();
+                        Some(root)
                     })
                     .collect()
             })
@@ -1930,6 +1936,7 @@ impl VCSProvider for AzureDevOpsProvider {
             content: comment.to_string(),
             created_at_date: Some(date),
             created_at_time: Some(time),
+            replies: vec![],
         })
     }
 }

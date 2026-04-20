@@ -91,6 +91,14 @@ pub async fn show(id: Option<String>, include_comments: bool, compact: bool) -> 
             let time = comment.created_at_time.as_deref().unwrap_or("");
             println!("\n### {} {} - {}", date, time, comment.author);
             println!("\n{}", comment.content);
+            for reply in &comment.replies {
+                let rdate = reply.created_at_date.as_deref().unwrap_or("");
+                let rtime = reply.created_at_time.as_deref().unwrap_or("");
+                println!("\n> **{} {} - {}**", rdate, rtime, reply.author);
+                for line in reply.content.lines() {
+                    println!("> {}", line);
+                }
+            }
         }
     }
 

@@ -8,7 +8,8 @@
       "Bash(rm fm.toml)",
       "Bash(cargo clippy *)",
       "Bash(cargo test *)",
-      "Bash(cargo fmt *)"
+      "Bash(cargo fmt *)",
+      "Bash(cargo check *)"
     ]
   }
 }
