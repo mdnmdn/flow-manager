@@ -476,6 +476,12 @@ pub enum PrFeedbackCommands {
         #[arg(long)]
         force: bool,
     },
+    /// Describe the review file format in plain text
+    #[command(alias = "st")]
+    Structure,
+    /// Print the JSON schema for review.yaml
+    #[command(alias = "sc")]
+    Schema,
 }
 
 #[derive(Subcommand)]

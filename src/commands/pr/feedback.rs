@@ -5,6 +5,190 @@ use crate::providers::git::LocalGitProvider;
 use anyhow::{anyhow, Result};
 use regex::Regex;
 
+pub fn structure() -> Result<()> {
+    println!(
+        r#"# review.yaml — structure
+
+A review file has two required fields and three optional arrays.
+
+## Required
+
+  summary: string (≥10 chars)
+    Free-text summary of the review. Posted as the top-level PR comment.
+
+  recommendation: approve | request_changes | needs_discussion
+    Overall verdict.
+
+## Optional arrays
+
+  threads[]          — actions on existing PR threads
+    id:      integer   thread ID (must exist in the PR)
+    action:  resolve | reply
+    comment: string    text posted before resolving, or as a reply
+
+  new_threads[]      — new file-anchored comments to create
+    file:     string   path relative to repo root
+    line:     integer  target line number (≥1)
+    severity: critical | major | minor | positive
+    comment:  string
+
+  open_points[]      — status of each PR description checklist item
+    ref:     string    must match (case-insensitive substring) an open point from the PR description
+    status:  addressed | not_addressed | partially_addressed
+    comment: string
+
+## Notes
+
+- All comment fields are plain text; no Markdown rendering is assumed by the CLI.
+- Threads whose status is not "active" are skipped during apply (warned during validate).
+- new_threads outside the PR diff are allowed but produce a validate warning.
+- open_points refs that do not match any PR checklist item are a hard error.
+
+## review.md (alternative format)
+
+Wrap each action in a fenced block tagged  ```action:<type>```.
+Prose outside blocks becomes the summary. End with:
+  **Recommendation:** <value>
+
+Block types: thread, new_thread, open_point
+Each block body is parsed as inline YAML with the same fields as above."#
+    );
+    Ok(())
+}
+
+pub fn schema() -> Result<()> {
+    println!("# --- JSON Schema ---\n");
+    println!(
+        r#"{{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["summary", "recommendation"],
+  "additionalProperties": false,
+  "properties": {{
+    "summary": {{ "type": "string", "minLength": 10 }},
+    "recommendation": {{
+      "type": "string",
+      "enum": ["approve", "request_changes", "needs_discussion"]
+    }},
+    "threads": {{
+      "type": "array",
+      "items": {{
+        "type": "object",
+        "required": ["id", "action", "comment"],
+        "additionalProperties": false,
+        "properties": {{
+          "id": {{ "type": "integer" }},
+          "action": {{ "type": "string", "enum": ["resolve", "reply"] }},
+          "comment": {{ "type": "string", "minLength": 1 }}
+        }}
+      }}
+    }},
+    "new_threads": {{
+      "type": "array",
+      "items": {{
+        "type": "object",
+        "required": ["file", "line", "severity", "comment"],
+        "additionalProperties": false,
+        "properties": {{
+          "file": {{ "type": "string" }},
+          "line": {{ "type": "integer", "minimum": 1 }},
+          "severity": {{
+            "type": "string",
+            "enum": ["critical", "major", "minor", "positive"]
+          }},
+          "comment": {{ "type": "string", "minLength": 1 }}
+        }}
+      }}
+    }},
+    "open_points": {{
+      "type": "array",
+      "items": {{
+        "type": "object",
+        "required": ["ref", "status", "comment"],
+        "additionalProperties": false,
+        "properties": {{
+          "ref": {{ "type": "string" }},
+          "status": {{
+            "type": "string",
+            "enum": ["addressed", "not_addressed", "partially_addressed"]
+          }},
+          "comment": {{ "type": "string" }}
+        }}
+      }}
+    }}
+  }}
+}}"#
+    );
+
+    println!("\n# --- YAML Schema ---\n");
+    println!(
+        r#"$schema: "http://json-schema.org/draft-07/schema#"
+type: object
+required:
+  - summary
+  - recommendation
+additionalProperties: false
+properties:
+  summary:
+    type: string
+    minLength: 10
+  recommendation:
+    type: string
+    enum:
+      - approve
+      - request_changes
+      - needs_discussion
+  threads:
+    type: array
+    items:
+      type: object
+      required: [id, action, comment]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+          enum: [resolve, reply]
+        comment:
+          type: string
+          minLength: 1
+  new_threads:
+    type: array
+    items:
+      type: object
+      required: [file, line, severity, comment]
+      additionalProperties: false
+      properties:
+        file:
+          type: string
+        line:
+          type: integer
+          minimum: 1
+        severity:
+          type: string
+          enum: [critical, major, minor, positive]
+        comment:
+          type: string
+          minLength: 1
+  open_points:
+    type: array
+    items:
+      type: object
+      required: [ref, status, comment]
+      additionalProperties: false
+      properties:
+        ref:
+          type: string
+        status:
+          type: string
+          enum: [addressed, not_addressed, partially_addressed]
+        comment:
+          type: string"#
+    );
+    Ok(())
+}
+
 fn detect_format(path: &str, explicit: Option<&str>) -> &'static str {
     match explicit {
         Some(f) if f.starts_with("md") => "md",

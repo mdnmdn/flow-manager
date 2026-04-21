@@ -94,6 +94,8 @@ async fn main() -> anyhow::Result<()> {
                     dry_run,
                     force,
                 } => commands::pr::feedback::apply(file, pr, format, dry_run, force).await?,
+                cli::PrFeedbackCommands::Structure => commands::pr::feedback::structure()?,
+                cli::PrFeedbackCommands::Schema => commands::pr::feedback::schema()?,
             },
             cli::PrCommands::Update {
                 title,

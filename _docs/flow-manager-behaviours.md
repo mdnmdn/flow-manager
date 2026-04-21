@@ -432,25 +432,328 @@ fm task complete
 
 ### `fm pr show [<id>]`
 
-**Goal:** Display PR details for the current or a specified context.
+**Goal:** Assemble a `context.md` document suitable as input to an AI review agent.
 
 ```
 fm pr show [<id>]
+  [--out <file>]               write to file instead of stdout
+  [--include-project-context]  inject README / AGENTS.md / CONTRIBUTING.md
 ```
 
 No `<id>` → uses current branch PR. `<id>` resolved via disambiguation rules (§1).
 
-**Output:**
+**What it fetches:**
+
+- PR metadata (title, author, branches, status, description) — `GET /pullRequests/{id}`
+- All threads with status and comments — `GET /pullRequests/{id}/threads`
+- Changed file list — `GET /pullRequests/{id}/iterations/{n}/changes`
+- Project context files from repo root — local filesystem (only when `--include-project-context`)
+
+**Output format (`context.md`):**
 
 ```markdown
-## PR #15650 — login flow implementation
+# PR #15650 — login flow implementation
 
-| Field  | Value |
-|--------|-------|
-| State  | draft |
-| Draft  | true |
-| Source | `feature/73240-login-flow` |
-| Target | `main` |
+**Author:** marco.rossi
+**Target branch:** main
+**Source branch:** feature/73240-login-flow
+**Created:** 2024-06-01T10:22:00Z
+**Status:** active
+
+---
+
+## Description
+
+Implements the login flow using OAuth2.
+
+### Open Points
+
+- [ ] Handle token refresh edge case
+- [ ] Add integration tests
+
+---
+
+## Threads
+<!-- total: 2  active: 1  resolved: 1 -->
+
+### Thread 42 · active
+**File:** `src/auth/login.ts` line 88
+**Author:** elena.v · 2024-06-02T09:10:00Z
+
+Max retries are hardcoded as `3`. Should come from config.
+
+---
+
+## Changed Files
+
+| File | Change |
+|---|---|
+| src/auth/login.ts | edit |
+| tests/auth/login.test.ts | add |
+
+---
+
+## Project Context
+
+### README.md
+> ...
+```
+
+Threads are sorted active-first, then resolved. Resolved threads are included for context. Open points are extracted from the PR description checklist syntax (`- [ ]` / `- [x]`). Project context section only appears when `--include-project-context` is passed.
+
+---
+
+### `fm pr thread list`
+
+**Goal:** List comment threads on a PR.
+
+```
+fm pr thread list [<id>]
+  [--status active|resolved|all]   default: active
+```
+
+No `<id>` → uses current branch PR.
+
+**Output:**
+
+```
+ID     STATUS     FILE                                LINE   AUTHOR          PREVIEW
+-----------------------------------------------------------------------------------------------
+42     active     src/auth/login.ts                   88     elena.v         Max retries are hardco…
+31     resolved   src/auth/oauth.ts                   14     elena.v         Missing null check on…
+```
+
+---
+
+### `fm pr thread reply`
+
+**Goal:** Post a reply to an existing thread.
+
+```
+fm pr thread reply <thread-id> <message>
+  [--pr <id>]     PR id (optional, uses current context if omitted)
+  [--resolve]     resolve the thread after posting the reply
+```
+
+`<message>` accepts `-` to read from stdin.
+
+**Output:**
+
+```
+Reply posted to thread 42.
+Thread 42 resolved.          ← only when --resolve
+```
+
+---
+
+### `fm pr thread resolve`
+
+**Goal:** Resolve one or more threads, with an optional closing comment.
+
+```
+fm pr thread resolve <thread-id> [<thread-id>...]
+  [--pr <id>]          PR id (optional, uses current context if omitted)
+  [--comment <text>]   optional comment posted before resolving
+```
+
+Sets thread status to `fixed` in ADO. When `--comment` is given the comment is posted first.
+
+**Output:**
+
+```
+Thread 42 resolved.
+Thread 47 resolved.
+```
+
+---
+
+### `fm pr feedback validate`
+
+**Goal:** Validate an agent-produced review file against the schema and cross-reference it against live ADO data. **Read-only. No writes.**
+
+```
+fm pr feedback validate
+  --file <path>          path to review.yaml or review.md
+  [--pr <id>]            PR id (optional, uses current context if omitted)
+  [--format yaml|md]     explicit format; auto-detected from extension if omitted
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Valid — no errors |
+| `1` | Hard errors — apply must not proceed |
+| `2` | Warnings only — apply can proceed with `--force` |
+
+**Checks performed:**
+
+- `summary` length ≥ 10 characters
+- `recommendation` is one of `approve`, `request_changes`, `needs_discussion`
+- Each `threads[]` entry: `action` is `resolve` or `reply`; thread id exists in the PR; warns if thread already resolved
+- Each `new_threads[]` entry: `severity` is one of `critical`, `major`, `minor`, `positive`; warns if file is outside the PR diff
+- Each `open_points[]` entry: `status` is one of `addressed`, `not_addressed`, `partially_addressed`; `ref` must match an open point from the PR description
+
+**Output:**
+
+```
+Validating review.yaml against PR #15650…
+
+Schema
+  ✅ Valid YAML
+  ✅ Required fields present (summary, recommendation)
+  ✅ recommendation value: request_changes
+
+Threads
+  ✅ Thread 42 exists · status: active → action: resolve ✓
+  ⚠️  Thread 31 exists but is already resolved → action will be skipped
+
+New Threads
+  ✅ src/auth/login.ts exists in repo
+  ⚠️  src/auth/config.ts is outside the PR diff — will still be posted
+
+Open Points
+  ✅ "Handle token refresh edge case" matches context open point
+  ❌ "Add load tests" not found in PR open points
+
+Result: 1 error, 2 warnings — fix errors before applying.
+```
+
+---
+
+### `fm pr feedback apply`
+
+**Goal:** Execute all actions from a validated review file against the PR. **This is the only command that writes to ADO.**
+
+```
+fm pr feedback apply
+  --file <path>          path to review.yaml or review.md
+  [--pr <id>]            PR id (optional, uses current context if omitted)
+  [--format yaml|md]     explicit format; auto-detected if omitted
+  [--dry-run]            print every action that would be taken, no writes
+  [--force]              apply despite validation warnings (errors still block)
+```
+
+Runs `validate` internally before any write. Aborts on validation errors; aborts on warnings unless `--force` is passed.
+
+**Execution order:**
+
+1. Post overall summary as a new PR thread (from `summary` field)
+2. Reply to existing threads (`threads[].action = reply`)
+3. Resolve existing threads (`threads[].action = resolve`)
+4. Post new file-level threads (`new_threads`)
+5. Post open points summary as a reply on the summary thread
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | All actions applied successfully |
+| `1` | Validation failed — nothing written |
+| `2` | Partial failure — some ADO API calls failed |
+
+**Output:**
+
+```
+Applying review to PR #15650…
+
+[1/5] Posting summary comment…              ✅ Thread 89 created
+[2/5] Replying to thread 47…                ✅ Reply posted
+[3/5] Resolving thread 42…                  ✅ Resolved
+[4/5] Posting new thread on src/auth/login.ts:88…   ✅ Thread 90 created
+[5/5] Posting new thread on src/auth/oauth.ts:34…   ✅ Thread 91 created
+      Open points summary…                  ✅ Posted as reply on thread 89
+
+Done. 5 actions applied, 0 failed.
+```
+
+---
+
+### Review file formats
+
+`fm pr feedback validate` and `fm pr feedback apply` accept two input formats.
+
+#### `review.yaml` (preferred)
+
+```yaml
+summary: |
+  Two of three open points addressed. One major issue on token refresh.
+
+recommendation: request_changes
+
+threads:
+  - id: 42
+    action: resolve
+    comment: Config value now read from env. Hardcoding removed.
+
+  - id: 47
+    action: reply
+    comment: TODO comment is not acceptable for merge. Open a tracked work item.
+
+new_threads:
+  - file: src/auth/oauth.ts
+    line: 34
+    severity: major
+    comment: Token not scoped per-user. Two concurrent timeouts could collide.
+
+open_points:
+  - ref: "Handle token refresh edge case"
+    status: not_addressed
+    comment: No changes relating to token refresh found in the diff.
+```
+
+#### `review.md` (alternative)
+
+Supported via `--format md`. The CLI parses ` ```action:<type> ``` ` fenced blocks embedded in the prose. All other Markdown content is used as the summary comment.
+
+```markdown
+# Review — PR #15650
+
+Two of three open points addressed.
+
+```action:thread
+id: 42
+action: resolve
+comment: Config value now read from env.
+```
+
+```action:new_thread
+file: src/auth/oauth.ts
+line: 34
+severity: major
+comment: Token not scoped per-user.
+```
+
+**Recommendation:** request_changes
+```
+
+---
+
+### `fm pr feedback structure`
+
+**Goal:** Print a plain-text description of the review file format. No network calls.
+
+```
+fm pr feedback structure
+```
+
+Outputs a human-readable reference covering all fields, allowed values, and the `review.md` alternative format. Useful as a prompt preamble when instructing an AI agent to produce a review file.
+
+---
+
+### `fm pr feedback schema`
+
+**Goal:** Print the JSON Schema for `review.yaml`. No network calls.
+
+```
+fm pr feedback schema
+```
+
+Outputs the full draft-07 JSON Schema. Can be piped directly into a validator or embedded in an agent prompt:
+
+```bash
+fm pr feedback schema > review-schema.json
+fm pr feedback schema | pbcopy   # macOS clipboard
 ```
 
 ---
@@ -882,6 +1185,10 @@ fm task complete              # switch to main and pull
 | Manage todos | `fm todo *` |
 | Keep branch up to date | `fm task sync [--rebase]` |
 | Publish PR for review | `fm pr update --publish` |
+| Assemble AI review context | `fm pr show [--out context.md] [--include-project-context]` |
+| List / reply / resolve threads | `fm pr thread list / reply / resolve` |
+| Validate AI review file | `fm pr feedback validate --file review.yaml` |
+| Apply AI review to PR | `fm pr feedback apply --file review.yaml` |
 | Merge PR | `fm pr merge` |
 | Trigger and watch CI | `fm pipeline run` / `fm pipeline status` |
 | Finalise and return to baseline | `fm task complete` |
