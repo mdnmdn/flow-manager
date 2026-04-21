@@ -72,7 +72,11 @@ pub fn extract_open_points(description: &str) -> Vec<String> {
         .collect()
 }
 
-pub async fn show(id: Option<String>, out: Option<String>, include_project_context: bool) -> Result<()> {
+pub async fn show(
+    id: Option<String>,
+    out: Option<String>,
+    include_project_context: bool,
+) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;

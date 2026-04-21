@@ -4,6 +4,23 @@ use fm::commands;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+
+    if let Some(ci_env) = fm::core::ci::CiEnvironment::detect() {
+        let ctx = fm::core::ci::CiContext::from_environment(
+            &ci_env,
+            &fm::core::config::CiConfig::default(),
+        );
+        eprintln!(
+            "[fm ci] {} | build {} | branch: {}{}",
+            ci_env.platform.label(),
+            ci_env.build_id.as_deref().unwrap_or("?"),
+            ctx.working_branch(),
+            ctx.pr_id()
+                .map(|id| format!(" | PR #{id}"))
+                .unwrap_or_default(),
+        );
+    }
+
     let cli = cli::parse();
 
     match cli.command {

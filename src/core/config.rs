@@ -15,6 +15,21 @@ pub struct Config {
     pub provider: Option<ProviderConfig>,
     pub sonar: Option<SonarConfig>,
     pub fm: FmConfig,
+    #[serde(default)]
+    pub ci: CiConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct CiConfig {
+    /// Force CI mode even when not in a real pipeline.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Override the detected branch name.
+    pub branch: Option<String>,
+    /// Override the detected PR ID.
+    pub pr_id: Option<String>,
+    /// Override the detected PR target branch.
+    pub pr_target_branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -123,6 +138,26 @@ impl Config {
             .add_source(Environment::with_prefix("FM").separator("__"))
             .build()?;
 
-        s.try_deserialize()
+        let mut cfg: Config = s.try_deserialize()?;
+
+        // ADO convenience fallback: populate url/project from pipeline vars when absent.
+        if let Some(ref mut provider) = cfg.provider {
+            if provider.kind == "ado" {
+                if let Some(ref mut ado) = provider.ado {
+                    if ado.url.is_empty() {
+                        if let Ok(uri) = std::env::var("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI") {
+                            ado.url = uri.trim_end_matches('/').to_string();
+                        }
+                    }
+                    if ado.project.is_empty() {
+                        if let Ok(proj) = std::env::var("SYSTEM_TEAMPROJECT") {
+                            ado.project = proj;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(cfg)
     }
 }
