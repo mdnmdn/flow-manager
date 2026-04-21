@@ -50,16 +50,16 @@ pub enum Commands {
     #[command(alias = "ctx")]
     Context {
         /// Show only work item details
-        #[arg(short, long)]
+        #[arg(long)]
         only_task: bool,
         /// Show only PR details
-        #[arg(short, long)]
+        #[arg(long)]
         only_pr: bool,
         /// Show only git details
-        #[arg(short, long)]
+        #[arg(long)]
         only_git: bool,
         /// Show only pipeline details
-        #[arg(short, long)]
+        #[arg(long)]
         only_pipeline: bool,
         /// Show comments for the current work item
         #[arg(short, long)]
@@ -81,13 +81,13 @@ pub enum Commands {
         #[arg(short, long)]
         all: bool,
         /// Amend the previous commit
-        #[arg(short, long)]
+        #[arg(long)]
         amend: bool,
         /// Override docs submodule commit message
         #[arg(short, long)]
         docs_message: Option<String>,
         /// Skip docs submodule handling
-        #[arg(short, long)]
+        #[arg(long)]
         no_docs: bool,
     },
     /// Push the current branch, including docs handling
@@ -203,6 +203,12 @@ pub enum TaskCommands {
         /// Target baseline branch
         #[arg(short, long)]
         target: Option<String>,
+        /// Initialize branch and PR if missing
+        #[arg(short, long)]
+        init: bool,
+        /// Specify branch name for initialization
+        #[arg(short, long)]
+        branch: Option<String>,
     },
     /// List work items
     // SPECIFICATION:

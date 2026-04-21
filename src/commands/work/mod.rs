@@ -138,10 +138,16 @@ pub async fn run(
     Ok(())
 }
 
-pub async fn load(id: String, _target: Option<String>) -> Result<()> {
+pub async fn load(
+    id: String,
+    target: Option<String>,
+    init: bool,
+    branch_name: Option<String>,
+) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
     let res = ContextManager::resolve_id(&id);
@@ -162,7 +168,7 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
 
     git.fetch().await?;
 
-    let branch_name = match git.find_branch_for_wi(wi.id.as_str())? {
+    let branch = match git.find_branch_for_wi(wi.id.as_str())? {
         Some(b) => b,
         None => {
             // Fall back to artifact links stored in the issue tracker.
@@ -179,15 +185,52 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
                         .any(|l| l.trim().trim_start_matches("origin/") == b)
                 })
                 .unwrap_or_else(|| {
-                    ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type)
+                    if let Some(bn) = branch_name {
+                        format!("feature/{}-{}", wi.id, bn)
+                    } else {
+                        ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type)
+                    }
                 })
         }
     };
 
-    if let Err(e) = git.checkout_branch(&branch_name).await {
+    let repo_name = git.get_repo_name()?;
+    let target_branch = target.unwrap_or(config.fm.default_target.clone());
+
+    if init {
+        // Check if remote branch exists
+        let remote_branches = git.run_git(&["branch", "-r"])?;
+        let branch_exists = remote_branches
+            .lines()
+            .any(|l| l.trim().trim_start_matches("origin/") == branch);
+
+        if !branch_exists {
+            println!("Initializing remote branch `{}` from `{}`...", branch, target_branch);
+            vcs.create_branch(&repo_name, &branch, &target_branch).await?;
+        }
+
+        // Check if PR exists
+        let pr = vcs.get_pull_request_by_branch(&repo_name, &branch).await?;
+        if pr.is_none() {
+            println!("Creating draft PR for branch `{}`...", branch);
+            let is_draft_supported = vcs.capabilities().draft_pull_requests;
+            vcs.create_pull_request(
+                &repo_name,
+                &branch,
+                &target_branch,
+                &wi.title,
+                "PR created by fm load --init",
+                is_draft_supported,
+                &[&wi.id],
+            )
+            .await?;
+        }
+    }
+
+    if let Err(e) = git.checkout_branch(&branch).await {
         return Err(anyhow!(
             "Branch `{}` not found locally or remotely.\nError: {}",
-            branch_name,
+            branch,
             e
         ));
     }
@@ -197,7 +240,7 @@ pub async fn load(id: String, _target: Option<String>) -> Result<()> {
     } else {
         "feature"
     };
-    BranchCache::save(&branch_name, &wi.id, cache_wi_type);
+    BranchCache::save(&branch, &wi.id, cache_wi_type);
 
     // Ensure Active
     tracker

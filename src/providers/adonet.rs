@@ -20,6 +20,9 @@ pub struct AzureDevOpsProvider {
     todo_in_progress_status: String,
     todo_complete_status: String,
     default_in_progress_status: String,
+    default_area: Option<String>,
+    default_current_iteration: bool,
+    default_assign_to_me: bool,
 }
 
 impl AzureDevOpsProvider {
@@ -42,6 +45,9 @@ impl AzureDevOpsProvider {
             todo_in_progress_status: config.todo_in_progress_status.clone(),
             todo_complete_status: config.todo_complete_status.clone(),
             default_in_progress_status: config.default_in_progress_status.clone(),
+            default_area: config.default_area.clone(),
+            default_current_iteration: config.default_current_iteration,
+            default_assign_to_me: config.default_assign_to_me,
         })
     }
 
@@ -83,6 +89,39 @@ impl AzureDevOpsProvider {
         } else {
             format!("refs/heads/{}", branch)
         }
+    }
+
+    async fn get_current_iteration(&self) -> Result<Option<String>> {
+        let url = self.v(&format!("{}/work/teamsettings/iterations", self.base_api_url()));
+        let resp = self.client.get(url).send().await?;
+
+        if !resp.status().is_success() {
+            return Ok(None);
+        }
+
+        let body: Value = resp.json().await?;
+        let iterations = body["value"].as_array().ok_or_else(|| anyhow!("No iterations found"))?;
+
+        for iter in iterations {
+            if iter["attributes"]["timeFrame"].as_str() == Some("current") {
+                return Ok(iter["path"].as_str().map(|s| s.to_string()));
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn get_me(&self) -> Result<Option<String>> {
+        // Fetch current user's profile to get uniqueName/email
+        let url = "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1";
+        let resp = self.client.get(url).send().await?;
+
+        if !resp.status().is_success() {
+            return Ok(None);
+        }
+
+        let body: Value = resp.json().await?;
+        Ok(body["emailAddress"].as_str().or_else(|| body["publicAlias"].as_str()).map(|s| s.to_string()))
     }
 }
 
@@ -248,12 +287,35 @@ impl IssueTracker for AzureDevOpsProvider {
             }));
         }
 
-        if let Some(assignee) = assigned_to {
+        let mut final_assignee = assigned_to.map(|s| s.to_string());
+        if final_assignee.is_none() && self.default_assign_to_me {
+            final_assignee = self.get_me().await.unwrap_or(None);
+        }
+
+        if let Some(assignee) = final_assignee {
             patch.push(json!({
                 "op": "add",
                 "path": "/fields/System.AssignedTo",
                 "value": assignee
             }));
+        }
+
+        if let Some(area) = &self.default_area {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.AreaPath",
+                "value": area
+            }));
+        }
+
+        if self.default_current_iteration {
+            if let Ok(Some(iteration)) = self.get_current_iteration().await {
+                patch.push(json!({
+                    "op": "add",
+                    "path": "/fields/System.IterationPath",
+                    "value": iteration
+                }));
+            }
         }
 
         if let Some(t) = tags {
@@ -700,6 +762,9 @@ mod tests {
             todo_in_progress_status: "In Progress".to_string(),
             todo_complete_status: "Done".to_string(),
             default_in_progress_status: "In Progress".to_string(),
+            default_area: None,
+            default_current_iteration: false,
+            default_assign_to_me: true,
         };
         let provider = AzureDevOpsProvider::new(&config).unwrap();
         (server, provider)

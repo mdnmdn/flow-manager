@@ -84,13 +84,75 @@ pub enum IdResolution {
 
 impl ContextManager {
     pub fn derive_branch_name(wi_id: &WorkItemId, title: &str, wi_type: &str) -> String {
-        let slug = title.to_lowercase().replace(' ', "-");
+        let slug = title
+            .to_lowercase()
+            .chars()
+            .map(|c| match c {
+                'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+                'è' | 'é' | 'ê' | 'ë' => 'e',
+                'ì' | 'í' | 'î' | 'ï' => 'i',
+                'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
+                'ù' | 'ú' | 'û' | 'ü' => 'u',
+                'ñ' => 'n',
+                'ç' => 'c',
+                'œ' => 'o',
+                c if c.is_ascii_alphanumeric() => c,
+                _ => '-',
+            })
+            .collect::<String>();
+
+        // Clean up duplicate hyphens and leading/trailing hyphens
+        let mut clean_slug = String::new();
+        let mut last_was_hyphen = false;
+        for c in slug.chars() {
+            if c == '-' {
+                if !last_was_hyphen && !clean_slug.is_empty() {
+                    clean_slug.push(c);
+                    last_was_hyphen = true;
+                }
+            } else {
+                clean_slug.push(c);
+                last_was_hyphen = false;
+            }
+        }
+        while clean_slug.ends_with('-') {
+            clean_slug.pop();
+        }
+
         let prefix = if wi_type == "Bug" || wi_type == "fix" {
             "fix"
         } else {
             "feature"
         };
-        format!("{}/{}-{}", prefix, wi_id, slug)
+        format!("{}/{}-{}", prefix, wi_id, clean_slug)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_derive_branch_name() {
+        let wi_id = WorkItemId("123".to_string());
+
+        // Basic
+        assert_eq!(
+            ContextManager::derive_branch_name(&wi_id, "Hello World", "feature"),
+            "feature/123-hello-world"
+        );
+
+        // Accents and special chars (apostrophe becomes dash, then compressed)
+        assert_eq!(
+            ContextManager::derive_branch_name(&wi_id, "L'été à l'œuvre!?", "fix"),
+            "fix/123-l-ete-a-l-ouvre"
+        );
+
+        // Multiple hyphens and separators
+        assert_eq!(
+            ContextManager::derive_branch_name(&wi_id, "My_Cool.Project (v1) --- test", "feature"),
+            "feature/123-my-cool-project-v1-test"
+        );
     }
 }
 

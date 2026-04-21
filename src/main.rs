@@ -30,7 +30,12 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?
             }
-            cli::TaskCommands::Load { id, target } => commands::work::load(id, target).await?,
+            cli::TaskCommands::Load {
+                id,
+                target,
+                init,
+                branch,
+            } => commands::work::load(id, target, init, branch).await?,
             cli::TaskCommands::List {
                 mine,
                 state,

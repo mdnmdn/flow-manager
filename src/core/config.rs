@@ -32,6 +32,15 @@ pub struct AdoConfig {
     pub todo_complete_status: String,
     #[serde(default = "default_in_progress")]
     pub default_in_progress_status: String,
+    pub default_area: Option<String>,
+    #[serde(default)]
+    pub default_current_iteration: bool,
+    #[serde(default = "default_assign_to_me")]
+    pub default_assign_to_me: bool,
+}
+
+fn default_assign_to_me() -> bool {
+    true
 }
 
 fn default_todo_wi_type() -> String {
