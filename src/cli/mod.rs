@@ -316,19 +316,29 @@ pub enum TaskCommands {
 
 #[derive(Subcommand)]
 pub enum PrCommands {
-    /// Show PR details
-    // SPECIFICATION:
-    // Fetch PR details: title, state, draft, reviewers, merge status, linked WIs.
+    /// Assemble context.md for AI review
     #[command(alias = "sh")]
     Show {
         /// PR id, WI id, or branch
         id: Option<String>,
-        /// Hide comments (default: show comments)
+        /// Write output to file instead of stdout
         #[arg(long)]
-        no_comments: bool,
-        /// Show compact format (id, status, title, comments count)
+        out: Option<String>,
+        /// Inject README / AGENTS.md / CONTRIBUTING.md as project context
         #[arg(long)]
-        compact: bool,
+        include_project_context: bool,
+    },
+    /// Manage PR comment threads
+    #[command(alias = "th")]
+    Thread {
+        #[command(subcommand)]
+        command: PrThreadCommands,
+    },
+    /// Validate and apply AI review files
+    #[command(alias = "fb")]
+    Feedback {
+        #[command(subcommand)]
+        command: PrFeedbackCommands,
     },
     /// Add a comment to a PR
     // SPECIFICATION:
@@ -390,6 +400,81 @@ pub enum PrCommands {
     Review {
         /// PR id, WI id, or branch
         id: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PrThreadCommands {
+    /// List PR threads
+    #[command(alias = "ls")]
+    List {
+        /// PR id, WI id, or branch (optional, uses current context if omitted)
+        id: Option<String>,
+        /// Filter by thread status: active | resolved | all
+        #[arg(long, default_value = "active")]
+        status: String,
+    },
+    /// Reply to a thread
+    #[command(alias = "r")]
+    Reply {
+        /// Thread ID
+        thread_id: String,
+        /// Reply text, or "-" to read from stdin
+        message: String,
+        /// PR id (optional, uses current context if omitted)
+        #[arg(long)]
+        pr: Option<String>,
+        /// Resolve thread after replying
+        #[arg(long)]
+        resolve: bool,
+    },
+    /// Resolve one or more threads
+    #[command(alias = "res")]
+    Resolve {
+        /// One or more thread IDs
+        thread_ids: Vec<String>,
+        /// PR id (optional, uses current context if omitted)
+        #[arg(long)]
+        pr: Option<String>,
+        /// Optional comment to post before resolving
+        #[arg(long)]
+        comment: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PrFeedbackCommands {
+    /// Validate a review file against the PR
+    #[command(alias = "v")]
+    Validate {
+        /// Path to review.yaml or review.md
+        #[arg(long)]
+        file: String,
+        /// PR id (optional, uses current context if omitted)
+        #[arg(long)]
+        pr: Option<String>,
+        /// Explicit format: yaml | md
+        #[arg(long)]
+        format: Option<String>,
+    },
+    /// Apply a review file to the PR
+    #[command(alias = "a")]
+    Apply {
+        /// Path to review.yaml or review.md
+        #[arg(long)]
+        file: String,
+        /// PR id (optional, uses current context if omitted)
+        #[arg(long)]
+        pr: Option<String>,
+        /// Explicit format: yaml | md
+        #[arg(long)]
+        format: Option<String>,
+        /// Print API calls without writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Apply despite warnings
+        #[arg(long)]
+        force: bool,
     },
 }
 

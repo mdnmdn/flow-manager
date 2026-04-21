@@ -64,9 +64,37 @@ async fn main() -> anyhow::Result<()> {
         cli::Commands::Pr { command } => match command {
             cli::PrCommands::Show {
                 id,
-                no_comments,
-                compact,
-            } => commands::pr::show(id, !no_comments, compact).await?,
+                out,
+                include_project_context,
+            } => commands::pr::show(id, out, include_project_context).await?,
+            cli::PrCommands::Thread { command } => match command {
+                cli::PrThreadCommands::List { id, status } => {
+                    commands::pr::thread::list(id, status).await?
+                }
+                cli::PrThreadCommands::Reply {
+                    thread_id,
+                    message,
+                    pr,
+                    resolve,
+                } => commands::pr::thread::reply(pr, thread_id, message, resolve).await?,
+                cli::PrThreadCommands::Resolve {
+                    thread_ids,
+                    pr,
+                    comment,
+                } => commands::pr::thread::resolve(pr, thread_ids, comment).await?,
+            },
+            cli::PrCommands::Feedback { command } => match command {
+                cli::PrFeedbackCommands::Validate { file, pr, format } => {
+                    commands::pr::feedback::validate(file, pr, format).await?
+                }
+                cli::PrFeedbackCommands::Apply {
+                    file,
+                    pr,
+                    format,
+                    dry_run,
+                    force,
+                } => commands::pr::feedback::apply(file, pr, format, dry_run, force).await?,
+            },
             cli::PrCommands::Update {
                 title,
                 description,

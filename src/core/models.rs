@@ -89,6 +89,64 @@ pub struct PullRequest {
     pub source_branch: String,
     pub target_branch: String,
     pub is_draft: bool,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequestThread {
+    pub id: String,
+    pub status: String,
+    pub file_path: Option<String>,
+    pub line: Option<u32>,
+    pub author: String,
+    pub created_at: String,
+    pub created_at_date: Option<String>,
+    pub created_at_time: Option<String>,
+    pub content: String,
+    pub replies: Vec<PullRequestComment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangedFile {
+    pub path: String,
+    pub change_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewFile {
+    pub summary: String,
+    pub recommendation: String,
+    #[serde(default)]
+    pub threads: Vec<ReviewThreadAction>,
+    #[serde(default)]
+    pub new_threads: Vec<ReviewNewThread>,
+    #[serde(default)]
+    pub open_points: Vec<ReviewOpenPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewThreadAction {
+    pub id: u64,
+    pub action: String,
+    pub comment: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewNewThread {
+    pub file: String,
+    pub line: u32,
+    pub severity: String,
+    pub comment: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewOpenPoint {
+    #[serde(rename = "ref")]
+    pub ref_: String,
+    pub status: String,
+    pub comment: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

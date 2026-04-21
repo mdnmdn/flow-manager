@@ -1,6 +1,7 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, PullRequestComment,
-    QualityIssue, Repository, WorkItem, WorkItemComment, WorkItemFilter, WorkItemId,
+    ChangedFile, MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest,
+    PullRequestComment, PullRequestThread, QualityIssue, Repository, WorkItem, WorkItemComment,
+    WorkItemFilter, WorkItemId,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -138,6 +139,58 @@ pub trait VCSProvider {
         _comment: &str,
     ) -> Result<PullRequestComment> {
         Err(anyhow::anyhow!("Adding PR comments not supported"))
+    }
+
+    /// Get all threads for a PR (rich model with file, line, status)
+    async fn get_pull_request_threads(
+        &self,
+        _repository: &str,
+        _id: &str,
+    ) -> Result<Vec<PullRequestThread>> {
+        Ok(vec![])
+    }
+
+    /// Post a reply comment to an existing thread
+    async fn reply_to_pull_request_thread(
+        &self,
+        _repository: &str,
+        _pr_id: &str,
+        _thread_id: &str,
+        _message: &str,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!("Reply to thread not supported"))
+    }
+
+    /// Update thread status (e.g. "fixed")
+    async fn update_pull_request_thread_status(
+        &self,
+        _repository: &str,
+        _pr_id: &str,
+        _thread_id: &str,
+        _status: &str,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!("Update thread status not supported"))
+    }
+
+    /// Get changed files for the latest PR iteration
+    async fn get_pull_request_changed_files(
+        &self,
+        _repository: &str,
+        _pr_id: &str,
+    ) -> Result<Vec<ChangedFile>> {
+        Ok(vec![])
+    }
+
+    /// Create a file-anchored (or general) thread on a PR
+    async fn add_pull_request_thread(
+        &self,
+        _repository: &str,
+        _pr_id: &str,
+        _content: &str,
+        _file_path: Option<&str>,
+        _line: Option<u32>,
+    ) -> Result<PullRequestThread> {
+        Err(anyhow::anyhow!("Adding anchored threads not supported"))
     }
 
     // Remote Branch/Repo Management

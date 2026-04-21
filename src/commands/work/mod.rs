@@ -205,8 +205,12 @@ pub async fn load(
             .any(|l| l.trim().trim_start_matches("origin/") == branch);
 
         if !branch_exists {
-            println!("Initializing remote branch `{}` from `{}`...", branch, target_branch);
-            vcs.create_branch(&repo_name, &branch, &target_branch).await?;
+            println!(
+                "Initializing remote branch `{}` from `{}`...",
+                branch, target_branch
+            );
+            vcs.create_branch(&repo_name, &branch, &target_branch)
+                .await?;
         }
 
         // Check if PR exists
@@ -326,24 +330,25 @@ pub async fn show(id: String, include_comments: bool, compact: bool) -> Result<(
     let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
-    let (wi_id, branch) =
-        if id.is_empty() {
-            let branch = git.get_current_branch().await?;
-            match ContextManager::detect(&branch) {
-                Context::Activity { wi_id, .. } => (wi_id, Some(branch)),
-                _ => return Err(anyhow!(
+    let (wi_id, branch) = if id.is_empty() {
+        let branch = git.get_current_branch().await?;
+        match ContextManager::detect(&branch) {
+            Context::Activity { wi_id, .. } => (wi_id, Some(branch)),
+            _ => {
+                return Err(anyhow!(
                     "Not in an Activity context - provide a task id or run from an activity branch"
-                )),
+                ))
             }
-        } else {
-            let res = ContextManager::resolve_id(&id);
-            let wi_id = match res {
-                IdResolution::WorkItem(id) => id,
-                IdResolution::Ambiguous(id) => id,
-                _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
-            };
-            (wi_id, None)
+        }
+    } else {
+        let res = ContextManager::resolve_id(&id);
+        let wi_id = match res {
+            IdResolution::WorkItem(id) => id,
+            IdResolution::Ambiguous(id) => id,
+            _ => return Err(anyhow!("Could not resolve ID to a Work Item")),
         };
+        (wi_id, None)
+    };
 
     let wi = tracker.get_work_item(&wi_id).await?;
     let comments = tracker.get_work_item_comments(&wi_id).await?;

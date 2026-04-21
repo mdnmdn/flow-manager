@@ -1,6 +1,7 @@
 use crate::core::models::{
-    MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest, PullRequestComment,
-    Repository, WorkItem, WorkItemComment, WorkItemFilter, WorkItemId,
+    ChangedFile, MergeStrategy, Pipeline, PipelineRun, ProviderCapabilities, PullRequest,
+    PullRequestComment, PullRequestThread, Repository, WorkItem, WorkItemComment, WorkItemFilter,
+    WorkItemId,
 };
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
 use anyhow::{anyhow, Result};
@@ -91,8 +92,27 @@ impl AzureDevOpsProvider {
         }
     }
 
+    fn parse_thread_status(v: &Value) -> String {
+        if let Some(s) = v.as_str() {
+            return s.to_lowercase();
+        }
+        match v.as_i64().unwrap_or(0) {
+            1 => "active",
+            2 => "fixed",
+            3 => "resolved",
+            4 => "bydesign",
+            5 => "closed",
+            6 => "pending",
+            _ => "unknown",
+        }
+        .to_string()
+    }
+
     async fn get_current_iteration(&self) -> Result<Option<String>> {
-        let url = self.v(&format!("{}/work/teamsettings/iterations", self.base_api_url()));
+        let url = self.v(&format!(
+            "{}/work/teamsettings/iterations",
+            self.base_api_url()
+        ));
         let resp = self.client.get(url).send().await?;
 
         if !resp.status().is_success() {
@@ -100,7 +120,9 @@ impl AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        let iterations = body["value"].as_array().ok_or_else(|| anyhow!("No iterations found"))?;
+        let iterations = body["value"]
+            .as_array()
+            .ok_or_else(|| anyhow!("No iterations found"))?;
 
         for iter in iterations {
             if iter["attributes"]["timeFrame"].as_str() == Some("current") {
@@ -121,7 +143,10 @@ impl AzureDevOpsProvider {
         }
 
         let body: Value = resp.json().await?;
-        Ok(body["emailAddress"].as_str().or_else(|| body["publicAlias"].as_str()).map(|s| s.to_string()))
+        Ok(body["emailAddress"]
+            .as_str()
+            .or_else(|| body["publicAlias"].as_str())
+            .map(|s| s.to_string()))
     }
 }
 
@@ -1482,6 +1507,12 @@ impl VCSProvider for AzureDevOpsProvider {
                 .unwrap_or_default()
                 .to_string(),
             is_draft: item["isDraft"].as_bool().unwrap_or_default(),
+            description: item["description"].as_str().map(|s| s.to_string()),
+            author: item["createdBy"]["displayName"]
+                .as_str()
+                .or_else(|| item["createdBy"]["uniqueName"].as_str())
+                .map(|s| s.to_string()),
+            created_at: item["creationDate"].as_str().map(|s| s.to_string()),
         }))
     }
 
@@ -1513,6 +1544,12 @@ impl VCSProvider for AzureDevOpsProvider {
                 .unwrap_or_default()
                 .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
+            description: body["description"].as_str().map(|s| s.to_string()),
+            author: body["createdBy"]["displayName"]
+                .as_str()
+                .or_else(|| body["createdBy"]["uniqueName"].as_str())
+                .map(|s| s.to_string()),
+            created_at: body["creationDate"].as_str().map(|s| s.to_string()),
         })
     }
 
@@ -1571,6 +1608,12 @@ impl VCSProvider for AzureDevOpsProvider {
                 .unwrap_or_default()
                 .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
+            description: body["description"].as_str().map(|s| s.to_string()),
+            author: body["createdBy"]["displayName"]
+                .as_str()
+                .or_else(|| body["createdBy"]["uniqueName"].as_str())
+                .map(|s| s.to_string()),
+            created_at: body["creationDate"].as_str().map(|s| s.to_string()),
         })
     }
 
@@ -1761,6 +1804,12 @@ impl VCSProvider for AzureDevOpsProvider {
                 .unwrap_or_default()
                 .to_string(),
             is_draft: body["isDraft"].as_bool().unwrap_or_default(),
+            description: body["description"].as_str().map(|s| s.to_string()),
+            author: body["createdBy"]["displayName"]
+                .as_str()
+                .or_else(|| body["createdBy"]["uniqueName"].as_str())
+                .map(|s| s.to_string()),
+            created_at: body["creationDate"].as_str().map(|s| s.to_string()),
         })
     }
 
@@ -2001,6 +2050,263 @@ impl VCSProvider for AzureDevOpsProvider {
             content: comment.to_string(),
             created_at_date: Some(date),
             created_at_time: Some(time),
+            replies: vec![],
+        })
+    }
+
+    async fn get_pull_request_threads(
+        &self,
+        repository: &str,
+        id: &str,
+    ) -> Result<Vec<PullRequestThread>> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads",
+            self.base_api_url(),
+            repository,
+            id
+        ));
+        let resp = self.client.get(url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+
+        let parse_comment = |c: &Value| -> Option<PullRequestComment> {
+            let created = c["publishedDate"].as_str()?;
+            let (date, time) = created
+                .split_once('T')
+                .map(|(d, t)| (d.to_string(), t.trim_end_matches('Z').to_string()))
+                .unwrap_or((created.to_string(), String::new()));
+            Some(PullRequestComment {
+                id: c["id"].as_i64()?.to_string(),
+                author: c["author"]["displayName"]
+                    .as_str()
+                    .or_else(|| c["author"]["uniqueName"].as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                created_at: created.to_string(),
+                content: c["content"].as_str().unwrap_or("").to_string(),
+                created_at_date: Some(date),
+                created_at_time: Some(time),
+                replies: vec![],
+            })
+        };
+
+        let threads = body["value"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| {
+                        let comments = t["comments"].as_array()?;
+                        let first = comments.first()?;
+                        // Skip system/empty threads
+                        let content = first["content"].as_str().unwrap_or("").to_string();
+                        if content.is_empty()
+                            && first["commentType"].as_str().unwrap_or("") == "system"
+                        {
+                            return None;
+                        }
+                        let created = first["publishedDate"].as_str().unwrap_or("");
+                        let (date, time) = created
+                            .split_once('T')
+                            .map(|(d, t)| (d.to_string(), t.trim_end_matches('Z').to_string()))
+                            .unwrap_or((created.to_string(), String::new()));
+                        let status = Self::parse_thread_status(&t["status"]);
+                        let file_path = t["threadContext"]["filePath"]
+                            .as_str()
+                            .map(|s| s.to_string());
+                        let line = t["threadContext"]["rightFileStart"]["line"]
+                            .as_u64()
+                            .map(|n| n as u32);
+                        let replies = comments.iter().skip(1).filter_map(parse_comment).collect();
+                        Some(PullRequestThread {
+                            id: t["id"].as_i64()?.to_string(),
+                            status,
+                            file_path,
+                            line,
+                            author: first["author"]["displayName"]
+                                .as_str()
+                                .or_else(|| first["author"]["uniqueName"].as_str())
+                                .unwrap_or("unknown")
+                                .to_string(),
+                            created_at: created.to_string(),
+                            created_at_date: Some(date),
+                            created_at_time: Some(time),
+                            content,
+                            replies,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(threads)
+    }
+
+    async fn reply_to_pull_request_thread(
+        &self,
+        repository: &str,
+        pr_id: &str,
+        thread_id: &str,
+        message: &str,
+    ) -> Result<()> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads/{}/comments",
+            self.base_api_url(),
+            repository,
+            pr_id,
+            thread_id
+        ));
+        let body = json!({
+            "parentCommentId": 1,
+            "content": message,
+            "commentType": 1
+        });
+        let resp = self.client.post(url).json(&body).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to reply to thread {}: {}",
+                thread_id,
+                resp.text().await?
+            ));
+        }
+        Ok(())
+    }
+
+    async fn update_pull_request_thread_status(
+        &self,
+        repository: &str,
+        pr_id: &str,
+        thread_id: &str,
+        status: &str,
+    ) -> Result<()> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads/{}",
+            self.base_api_url(),
+            repository,
+            pr_id,
+            thread_id
+        ));
+        let body = json!({ "status": status });
+        let resp = self.client.patch(url).json(&body).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!(
+                "Failed to update thread {} status: {}",
+                thread_id,
+                resp.text().await?
+            ));
+        }
+        Ok(())
+    }
+
+    async fn get_pull_request_changed_files(
+        &self,
+        repository: &str,
+        pr_id: &str,
+    ) -> Result<Vec<ChangedFile>> {
+        let iter_url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/iterations",
+            self.base_api_url(),
+            repository,
+            pr_id
+        ));
+        let resp = self.client.get(iter_url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+        let iteration_id = body["value"]
+            .as_array()
+            .and_then(|a| a.last())
+            .and_then(|v| v["id"].as_i64())
+            .ok_or_else(|| anyhow!("No iterations found for PR {}", pr_id))?;
+
+        let changes_url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/iterations/{}/changes",
+            self.base_api_url(),
+            repository,
+            pr_id,
+            iteration_id
+        ));
+        let resp = self.client.get(changes_url).send().await?;
+        if !resp.status().is_success() {
+            return Ok(vec![]);
+        }
+        let body: Value = resp.json().await?;
+
+        let files = body["changeEntries"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|entry| {
+                        let path = entry["item"]["path"].as_str()?;
+                        let change_type =
+                            entry["changeType"].as_str().unwrap_or("edit").to_string();
+                        Some(ChangedFile {
+                            path: path.to_string(),
+                            change_type,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(files)
+    }
+
+    async fn add_pull_request_thread(
+        &self,
+        repository: &str,
+        pr_id: &str,
+        content: &str,
+        file_path: Option<&str>,
+        line: Option<u32>,
+    ) -> Result<PullRequestThread> {
+        let url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests/{}/threads",
+            self.base_api_url(),
+            repository,
+            pr_id
+        ));
+        let mut body = json!({
+            "comments": [{ "parentCommentId": 0, "content": content, "commentType": 1 }],
+            "status": "active"
+        });
+        if let (Some(fp), Some(ln)) = (file_path, line) {
+            body["threadContext"] = json!({
+                "filePath": fp,
+                "rightFileStart": { "line": ln, "offset": 1 },
+                "rightFileEnd": { "line": ln, "offset": 1 }
+            });
+        }
+        let resp = self.client.post(url).json(&body).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("Failed to create thread: {}", resp.text().await?));
+        }
+        let body: Value = resp.json().await?;
+        let first = body["comments"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| anyhow!("No comment in created thread response"))?;
+        let created = first["publishedDate"].as_str().unwrap_or("");
+        let (date, time) = created
+            .split_once('T')
+            .map(|(d, t)| (d.to_string(), t.trim_end_matches('Z').to_string()))
+            .unwrap_or((created.to_string(), String::new()));
+        Ok(PullRequestThread {
+            id: body["id"].as_i64().unwrap_or(0).to_string(),
+            status: "active".to_string(),
+            file_path: file_path.map(|s| s.to_string()),
+            line,
+            author: first["author"]["displayName"]
+                .as_str()
+                .or_else(|| first["author"]["uniqueName"].as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            created_at: created.to_string(),
+            created_at_date: Some(date),
+            created_at_time: Some(time),
+            content: content.to_string(),
             replies: vec![],
         })
     }
