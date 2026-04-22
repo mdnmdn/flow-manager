@@ -37,7 +37,7 @@ impl AzureDevOpsProvider {
 
         let client = Client::builder().default_headers(headers).build()?;
 
-        Ok(Self {
+        let provider = Self {
             client,
             organization_url: config.url.trim_end_matches('/').to_string(),
             project: config.project.clone(),
@@ -49,7 +49,8 @@ impl AzureDevOpsProvider {
             default_area: config.default_area.clone(),
             default_current_iteration: config.default_current_iteration,
             default_assign_to_me: config.default_assign_to_me,
-        })
+        };
+        Ok(provider)
     }
 
     pub fn todo_wi_type(&self) -> &str {
@@ -58,6 +59,10 @@ impl AzureDevOpsProvider {
 
     pub fn bug_wi_type(&self) -> &str {
         &self.bug_wi_type
+    }
+
+    pub fn default_area(&self) -> Option<&str> {
+        self.default_area.as_deref()
     }
 
     pub fn todo_in_progress_status(&self) -> &str {
@@ -264,6 +269,10 @@ impl IssueTracker for AzureDevOpsProvider {
         }
     }
 
+    fn default_area(&self) -> Option<&str> {
+        self.default_area.as_deref()
+    }
+
     async fn get_work_item(&self, id: &WorkItemId) -> Result<WorkItem> {
         let url = self.v(&format!(
             "{}/wit/workitems/{}?$expand=fields",
@@ -330,6 +339,14 @@ impl IssueTracker for AzureDevOpsProvider {
                 "op": "add",
                 "path": "/fields/System.AreaPath",
                 "value": area
+            }));
+        }
+
+        if self.default_in_progress_status != "New" {
+            patch.push(json!({
+                "op": "add",
+                "path": "/fields/System.State",
+                "value": self.default_in_progress_status
             }));
         }
 
@@ -487,6 +504,9 @@ impl IssueTracker for AzureDevOpsProvider {
         }
         if let Some(wi_type) = &filter.work_item_type {
             wiql.push_str(&format!(" AND [System.WorkItemType] = '{}'", wi_type));
+        }
+        if let Some(area) = &filter.area {
+            wiql.push_str(&format!(" AND [System.AreaPath] UNDER '{}'", area));
         }
         for label in &filter.labels {
             wiql.push_str(&format!(" AND [System.Tags] CONTAINS '{}'", label));
