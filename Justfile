@@ -23,7 +23,7 @@ lint:
 
 # Run the CLI tool with arguments
 run:
-	cargo run -- {{args}}
+	cargo run -- $@
 
 # Run the CLI tool with no arguments (shows help)
 run-help:

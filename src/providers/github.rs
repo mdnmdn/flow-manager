@@ -1042,3 +1042,420 @@ impl GitHubProvider {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockito::{Server, ServerGuard};
+
+    async fn setup_mock_server() -> (ServerGuard, GitHubProvider) {
+        let server = Server::new_async().await;
+        let config = crate::core::config::GitHubConfig {
+            token: "test-token".to_string(),
+            owner: "test-owner".to_string(),
+            repo: "test-repo".to_string(),
+            base_url: Some(server.url()),
+        };
+        let provider = GitHubProvider::new(&config).unwrap();
+        (server, provider)
+    }
+
+    // IssueTracker Tests
+
+    #[tokio::test]
+    async fn test_get_work_item() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/issues/42")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "number": 42,
+                    "title": "Fix bug",
+                    "state": "open",
+                    "labels": [{"name": "type:bug"}],
+                    "assignee": {"login": "alice"}
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .get_work_item(&WorkItemId::from_int(42))
+            .await
+            .unwrap();
+        assert_eq!(result.id.as_str(), "42");
+        assert_eq!(result.title, "Fix bug");
+        assert_eq!(result.work_item_type, "Bug");
+        assert_eq!(result.state, "open");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_work_item() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("POST", "/repos/test-owner/test-repo/issues")
+            .with_status(201)
+            .with_body(
+                json!({
+                    "number": 99,
+                    "title": "New task",
+                    "state": "open",
+                    "labels": [{"name": "type:task"}],
+                    "assignee": null
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .create_work_item("New task", "Task", None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(result.title, "New task");
+        assert_eq!(result.work_item_type, "Task");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_update_work_item() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("PATCH", "/repos/test-owner/test-repo/issues/10")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "number": 10,
+                    "title": "Updated",
+                    "state": "open",
+                    "labels": [{"name": "type:bug"}],
+                    "assignee": null
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .update_work_item(&WorkItemId::from_int(10), Some("Updated"), None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(result.title, "Updated");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_update_work_item_state() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("PATCH", "/repos/test-owner/test-repo/issues/5")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "number": 5,
+                    "title": "Test issue",
+                    "state": "closed",
+                    "labels": [],
+                    "assignee": null
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .update_work_item_state(&WorkItemId::from_int(5), "closed")
+            .await
+            .unwrap();
+        assert_eq!(result.state, "closed");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_query_work_items() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex("/search/issues.*".to_string()),
+            )
+            .with_status(200)
+            .with_body(
+                json!({
+                    "items": [{
+                        "number": 1,
+                        "title": "Test issue",
+                        "state": "open",
+                        "labels": [{"name": "type:bug"}],
+                        "assignee": null
+                    }],
+                    "total_count": 1
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let filter = WorkItemFilter::default();
+        let results = provider.query_work_items(&filter).await.unwrap();
+        assert_eq!(results.len(), 1);
+        mock.assert_async().await;
+    }
+
+    // VCSProvider Tests
+
+    #[tokio::test]
+    async fn test_get_pull_request_by_branch() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex("/repos/test-owner/test-repo/pulls.*".to_string()),
+            )
+            .with_status(200)
+            .with_body(
+                json!([{
+                    "number": 7,
+                    "title": "My PR",
+                    "state": "open",
+                    "head": {"ref": "feature/x"},
+                    "base": {"ref": "main"},
+                    "draft": false,
+                    "user": {"login": "bob"},
+                    "created_at": "2025-01-01T00:00:00Z"
+                }])
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .get_pull_request_by_branch("", "feature/x")
+            .await
+            .unwrap();
+        assert!(result.is_some());
+        let pr = result.unwrap();
+        assert_eq!(pr.id, "7");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_details() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/pulls/7")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "number": 7,
+                    "title": "My PR",
+                    "state": "open",
+                    "head": {"ref": "feature/x"},
+                    "base": {"ref": "main"},
+                    "draft": false,
+                    "user": {"login": "bob"},
+                    "created_at": "2025-01-01T00:00:00Z"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.get_pull_request_details("", "7").await.unwrap();
+        assert_eq!(result.title, "My PR");
+        assert_eq!(result.status, "open");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_pull_request() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("POST", "/repos/test-owner/test-repo/pulls")
+            .with_status(201)
+            .with_body(
+                json!({
+                    "number": 1,
+                    "title": "PR title",
+                    "state": "open",
+                    "head": {"ref": "feature/abc"},
+                    "base": {"ref": "main"},
+                    "draft": true,
+                    "user": {"login": "alice"},
+                    "created_at": "2025-01-01T00:00:00Z"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .create_pull_request("", "feature/abc", "main", "PR title", "desc", true, &[])
+            .await
+            .unwrap();
+        assert_eq!(result.id, "1");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_complete_pull_request() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("PUT", "/repos/test-owner/test-repo/pulls/3/merge")
+            .with_status(200)
+            .with_body(json!({"message": "Pull Request successfully merged"}).to_string())
+            .create_async()
+            .await;
+
+        let result = provider
+            .complete_pull_request("", "3", MergeStrategy::Squash, false)
+            .await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_add_reviewer() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock(
+                "POST",
+                "/repos/test-owner/test-repo/pulls/5/requested_reviewers",
+            )
+            .with_status(200)
+            .with_body(
+                json!({
+                    "number": 5,
+                    "requested_reviewers": [{"login": "carol"}]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.add_reviewer("", "5", "carol").await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_create_branch() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock_get = server
+            .mock("GET", "/repos/test-owner/test-repo/git/ref/heads/main")
+            .with_status(200)
+            .with_body(json!({"object": {"sha": "abc123"}}).to_string())
+            .create_async()
+            .await;
+        let mock_post = server
+            .mock("POST", "/repos/test-owner/test-repo/git/refs")
+            .with_status(201)
+            .with_body(
+                json!({"ref": "refs/heads/feature/new", "object": {"sha": "abc123"}}).to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.create_branch("", "feature/new", "main").await;
+        assert!(result.is_ok());
+        mock_get.assert_async().await;
+        mock_post.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_branch() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock(
+                "DELETE",
+                "/repos/test-owner/test-repo/git/refs/heads/feature/old",
+            )
+            .with_status(204)
+            .create_async()
+            .await;
+
+        let result = provider.delete_branch("", "feature/old").await;
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_changed_files() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/pulls/8/files")
+            .with_status(200)
+            .with_body(
+                json!([
+                    {"filename": "src/main.rs", "status": "modified"},
+                    {"filename": "README.md", "status": "added"}
+                ])
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider
+            .get_pull_request_changed_files("", "8")
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].path, "src/main.rs");
+        mock.assert_async().await;
+    }
+
+    // PipelineProvider Tests
+
+    #[tokio::test]
+    async fn test_list_pipelines() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/actions/workflows")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "workflows": [{
+                        "id": 100,
+                        "name": "CI",
+                        "path": ".github/workflows/ci.yml"
+                    }]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.list_pipelines().await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "CI");
+        assert_eq!(result[0].id, "100");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_run_status() {
+        let (mut server, provider) = setup_mock_server().await;
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/actions/runs/999")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "id": 999,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": "https://github.com/runs/999"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let result = provider.get_run_status("999").await.unwrap();
+        assert_eq!(result.status, "completed");
+        assert_eq!(result.result, Some("succeeded".to_string()));
+        mock.assert_async().await;
+    }
+}

@@ -12,7 +12,8 @@
       "Bash(cargo check *)",
       "Bash(cat)",
       "Bash(bash /tmp/check_methods.sh)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(git stash *)"
     ]
   }
 }

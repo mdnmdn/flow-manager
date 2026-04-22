@@ -1107,6 +1107,11 @@ mod tests {
                 },
                 {
                     "op": "add",
+                    "path": "/fields/System.State",
+                    "value": "In Progress"
+                },
+                {
+                    "op": "add",
                     "path": "/fields/System.Tags",
                     "value": "tag1;tag2"
                 }
