@@ -181,6 +181,7 @@ pub struct WorkItemFilter {
     pub text: Option<String>,
     pub milestone: Option<String>,
     pub limit: Option<u32>,
+    pub area: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

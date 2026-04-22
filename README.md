@@ -53,23 +53,25 @@ fm pr feedback apply --file review.yaml
 | Pipeline | `pipeline run`, `pipeline status` |
 | Code quality | `sonar` |
 | Git sugar | `commit`, `push`, `sync` |
-| CI support | auto-detects Azure DevOps pipelines; populates config from pipeline env vars |
+| CI support | auto-detects Azure DevOps and GitHub Actions; populates config from pipeline env vars |
 
 ---
 
 ## Provider support
 
-| Provider | Issue tracker | VCS / PRs | Status |
-|---|---|---|---|
-| Azure DevOps | ✅ | ✅ | Primary target |
-| GitHub | — | — | Planned |
-| GitLab | — | — | Planned |
+| Provider | Issue tracker | VCS / PRs | Pipelines | Status |
+|---|---|---|---|---|
+| Azure DevOps | ✅ | ✅ | ✅ | Primary target |
+| GitHub | ✅ | ✅ | ✅ | Implemented |
+| GitLab | — | — | — | Planned |
+
+GitHub maps issues to work items (type encoded via `type:` labels), pull requests 1:1, and GitHub Actions workflows to pipelines.
 
 ---
 
 ## Configuration
 
-Minimal `fm.toml` (credentials via environment variables):
+Minimal `fm.toml` for Azure DevOps (credentials via environment variables):
 
 ```toml
 [provider]
@@ -81,7 +83,21 @@ project = "myproject"
 pat     = ""          # override with FM__PROVIDER__ADO__PAT
 ```
 
-In CI, `url` and `project` are auto-populated from `SYSTEM_TEAMFOUNDATIONCOLLECTIONURI` and `SYSTEM_TEAMPROJECT` when left empty.
+Minimal `fm.toml` for GitHub:
+
+```toml
+[provider]
+type = "github"
+
+[provider.github]
+token = ""      # override with FM__PROVIDER__GITHUB__TOKEN
+owner = "myorg"
+repo  = "myrepo"
+```
+
+In CI, ADO populates `url`/`project` from `SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`/`SYSTEM_TEAMPROJECT`; GitHub populates `owner`/`repo` from `GITHUB_REPOSITORY` when left empty.
+
+Run `fm init --discover` to auto-detect the provider from the git remote and generate a config.
 
 ---
 

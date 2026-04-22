@@ -24,6 +24,9 @@ pub trait IssueTracker {
     fn default_in_progress_status(&self) -> &str {
         "In Progress"
     }
+    fn default_area(&self) -> Option<&str> {
+        None
+    }
     async fn get_work_item(&self, id: &WorkItemId) -> Result<WorkItem>;
     async fn create_work_item(
         &self,
@@ -239,6 +242,7 @@ pub trait QualityProvider {
 pub mod adonet;
 pub mod factory;
 pub mod git;
+pub mod github;
 pub mod sonar;
 
 pub use sonar::QualityProject;

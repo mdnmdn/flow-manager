@@ -159,13 +159,16 @@ FM__<SECTION>__<KEY>
 
 Double underscores (`__`) separate nesting levels. Examples:
 
-| Config key              | Environment variable          |
-|-------------------------|-------------------------------|
-| `provider.ado.url`      | `FM__PROVIDER__ADO__URL`      |
-| `provider.ado.pat`      | `FM__PROVIDER__ADO__PAT`      |
-| `provider.github.token` | `FM__PROVIDER__GITHUB__TOKEN` |
-| `fm.default_target`     | `FM__FM__DEFAULT_TARGET`      |
-| `sonar.token`           | `FM__SONAR__TOKEN`            |
+| Config key                  | Environment variable              |
+|-----------------------------|-----------------------------------|
+| `provider.ado.url`          | `FM__PROVIDER__ADO__URL`          |
+| `provider.ado.pat`          | `FM__PROVIDER__ADO__PAT`          |
+| `provider.github.token`     | `FM__PROVIDER__GITHUB__TOKEN`     |
+| `provider.github.owner`     | `FM__PROVIDER__GITHUB__OWNER`     |
+| `provider.github.repo`      | `FM__PROVIDER__GITHUB__REPO`      |
+| `provider.github.base_url`  | `FM__PROVIDER__GITHUB__BASE_URL`  |
+| `fm.default_target`         | `FM__FM__DEFAULT_TARGET`          |
+| `sonar.token`               | `FM__SONAR__TOKEN`                |
 
 Environment variables are read after the config file, so they can override any file value without modifying it. This is the recommended approach for secrets in CI/CD pipelines.
 
@@ -179,3 +182,27 @@ FM__SONAR__TOKEN=my-sonar-token
 ```
 
 Add `.env` to `.gitignore` to keep secrets out of version control.
+
+---
+
+## CI auto-population
+
+When running inside a CI pipeline, `fm` populates missing config fields from well-known environment variables so that a minimal `fm.toml` (token only) is sufficient.
+
+### Azure DevOps
+
+| Config field       | Source env var                          |
+|--------------------|-----------------------------------------|
+| `provider.ado.url`     | `SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`    |
+| `provider.ado.project` | `SYSTEM_TEAMPROJECT`                    |
+
+### GitHub Actions
+
+| Config field              | Source env var        |
+|---------------------------|-----------------------|
+| `provider.github.owner`   | `GITHUB_REPOSITORY` (split on `/`) |
+| `provider.github.repo`    | `GITHUB_REPOSITORY` (split on `/`) |
+
+`GITHUB_REPOSITORY` has the form `owner/repo`. Both fields are only written when empty in the config file.
+
+The token (`FM__PROVIDER__GITHUB__TOKEN` or `FM__PROVIDER__ADO__PAT`) must always be supplied explicitly — it is never auto-populated from pipeline variables.

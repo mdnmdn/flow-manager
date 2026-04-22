@@ -1,19 +1,19 @@
 # Flow Manager Agent Guide
 
 ## Overview
-Flow Manager (`fm`) is a Rust-based CLI tool designed to automate and simplify the development workflow using Azure DevOps, Git, and SonarQube. It provides "porcelain" commands for high-level workflows and "plumbing" commands for low-level operations.
+Flow Manager (`fm`) is a Rust-based CLI tool designed to automate and simplify the development workflow using Azure DevOps, GitHub, Git, and SonarQube. It provides "porcelain" commands for high-level workflows and "plumbing" commands for low-level operations.
 
 ## Project Structure
 - `src/cli/`: CLI command definitions using `clap`.
 - `src/commands/`: Implementation of porcelain and plumbing commands.
 - `src/core/`: Core business logic, context management, and domain models.
-- `src/providers/`: Interfaces and implementations for external providers (starting with Azure DevOps).
+- `src/providers/`: Interfaces and implementations for external providers (ADO and GitHub).
 - `_docs/`: Documentation.
     - [`flow-manager-behaviours.md`](_docs/flow-manager-behaviours.md): Authoritative reference for every command — steps, output, and behaviour.
     - [`component-specification.md`](_docs/component-specification.md): Provider traits, LocalGitProvider utilities, and internal coordination.
     - [`project-structure.md`](_docs/project-structure.md): Architecture, directory layout, and design principles.
     - [`config-structure.md`](_docs/config-structure.md): Full config reference and environment variable mapping.
-    - [`github-provider-analysis.md`](_docs/multiprovider/github-provider-analysis.md): Feasibility analysis for a GitHub provider.
+    - [`github-provider.md`](_docs/multiprovider/github-provider.md): GitHub provider implementation reference — endpoints, mappings, limitations, next steps.
     - [`gitlab-provider-analysis.md`](_docs/multiprovider/gitlab-provider-analysis.md): Feasibility analysis for a GitLab provider.
     - [`bitbucket-provider-analysis.md`](_docs/multiprovider/bitbucket-provider-analysis.md): Feasibility analysis for a Bitbucket/Atlassian provider.
 

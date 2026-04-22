@@ -9,7 +9,10 @@
       "Bash(cargo clippy *)",
       "Bash(cargo test *)",
       "Bash(cargo fmt *)",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(cat)",
+      "Bash(bash /tmp/check_methods.sh)",
+      "Read(//tmp/**)"
     ]
   }
 }

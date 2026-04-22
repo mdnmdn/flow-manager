@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows by orchestrating operations across version control (Git), work item tracking (Azure DevOps), and code quality tools (SonarQube). It follows a layered architecture to separate user-facing "porcelain" commands from low-level "plumbing" commands and infrastructure-specific providers.
+The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows by orchestrating operations across version control (Git), work item tracking (Azure DevOps or GitHub), and code quality tools (SonarQube). It follows a layered architecture to separate user-facing "porcelain" commands from low-level "plumbing" commands and infrastructure-specific providers.
 
 ## Directory Structure
 
@@ -47,6 +47,7 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 │       ├── mod.rs                # IssueTracker, VCSProvider, PipelineProvider, QualityProvider traits
 │       ├── factory.rs            # ProviderSet: builds concrete providers from Config
 │       ├── adonet.rs             # Azure DevOps REST API (issue tracker + VCS + pipeline)
+│       ├── github.rs             # GitHub REST API (issue tracker + VCS + pipeline)
 │       ├── git.rs                # LocalGitProvider: local git operations via subprocess
 │       └── sonar.rs              # SonarQube API client
 ├── _docs/                        # Project documentation
@@ -55,9 +56,10 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 │   ├── config-structure.md
 │   ├── project-structure.md      # this file
 │   ├── provider-evolutions-extensibilities.md
-│   ├── github-provider-analysis.md
-│   ├── gitlab-provider-analysis.md
-│   └── bitbucket-provider-analysis.md
+│   └── multiprovider/
+│       ├── github-provider.md              # GitHub provider reference (implemented)
+│       ├── gitlab-provider-analysis.md     # GitLab feasibility analysis
+│       └── bitbucket-provider-analysis.md  # Bitbucket feasibility analysis
 └── AGENTS.md                     # Agent instructions and project overview
 ```
 
@@ -95,6 +97,7 @@ Handles communication with external systems behind shared traits.
 - **`mod.rs`** defines: `IssueTracker`, `VCSProvider`, `PipelineProvider`, `QualityProvider`
 - **`factory.rs`** (`ProviderSet`): reads `Config.provider.kind` and constructs the concrete provider set
 - **`adonet.rs`**: Azure DevOps implementation of `IssueTracker`, `VCSProvider`, and `PipelineProvider`
+- **`github.rs`**: GitHub REST API implementation of `IssueTracker`, `VCSProvider`, and `PipelineProvider`; maps issues→work items (via `type:` labels), PRs→pull requests, Actions workflows→pipelines
 - **`git.rs`** (`LocalGitProvider`): implements `VCSProvider` local operations (checkout, stash, push, fetch, …) plus utility methods not on the trait: `get_repo_name()`, `find_branch_for_wi()`, `has_staged_changes()`, `stash_push_staged()`, `stash_pop_named()`
 - **`sonar.rs`**: implements `QualityProvider` against SonarQube REST API
 

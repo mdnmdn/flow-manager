@@ -1,5 +1,6 @@
 use crate::core::config::Config;
 use crate::providers::adonet::AzureDevOpsProvider;
+use crate::providers::github::GitHubProvider;
 use crate::providers::{IssueTracker, PipelineProvider, QualityProvider, VCSProvider};
 use anyhow::{bail, Result};
 use std::sync::Arc;
@@ -31,7 +32,18 @@ impl ProviderSet {
                     quality: None,
                 })
             }
-            "github" => todo!("GitHub provider not yet implemented"),
+            "github" => {
+                let c = provider.github.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Missing [provider.github] section in config")
+                })?;
+                let gh = Arc::new(GitHubProvider::new(c)?);
+                Ok(ProviderSet {
+                    issue_tracker: gh.clone(),
+                    vcs: gh.clone(),
+                    pipeline: Some(gh),
+                    quality: None,
+                })
+            }
             "gitlab" => todo!("GitLab provider not yet implemented"),
             other => bail!(
                 "Unknown provider type '{}'. Expected: ado, github, gitlab",

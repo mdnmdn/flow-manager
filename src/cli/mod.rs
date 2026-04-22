@@ -183,7 +183,7 @@ pub enum TaskCommands {
         #[arg(long)]
         tags: Option<String>,
         /// SonarQube project key
-        #[arg(short, long)]
+        #[arg(long)]
         sonar_project: Option<String>,
     },
     /// Resume an existing work item
@@ -225,8 +225,11 @@ pub enum TaskCommands {
         #[arg(short, long, default_value = "all")]
         type_name: String,
         /// Maximum results
-        #[arg(short, long, default_value_t = 20)]
+        #[arg(long, default_value_t = 20)]
         max: i32,
+        /// Area path override (uses default_area from config if not specified)
+        #[arg(short, long)]
+        area: Option<String>,
     },
     /// Show work item details
     // SPECIFICATION:

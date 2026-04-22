@@ -277,7 +277,13 @@ pub async fn load(
     Ok(())
 }
 
-pub async fn list(mine: bool, state: String, type_name: String, max: i32) -> Result<()> {
+pub async fn list(
+    mine: bool,
+    state: String,
+    type_name: String,
+    max: i32,
+    area: Option<String>,
+) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;
@@ -303,6 +309,10 @@ pub async fn list(mine: bool, state: String, type_name: String, max: i32) -> Res
         };
         filter.work_item_type = Some(actual_type.to_string());
     }
+
+    filter.area = area
+        .clone()
+        .or_else(|| tracker.default_area().map(|s| s.to_string()));
 
     let items = tracker.query_work_items(&filter).await?;
     let limited_items: Vec<_> = items.into_iter().take(max as usize).collect();

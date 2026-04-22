@@ -156,6 +156,20 @@ impl Config {
                     }
                 }
             }
+            if provider.kind == "github" {
+                if let Some(ref mut gh) = provider.github {
+                    if let Ok(repo_str) = std::env::var("GITHUB_REPOSITORY") {
+                        if let Some((owner, name)) = repo_str.split_once('/') {
+                            if gh.owner.is_empty() {
+                                gh.owner = owner.to_string();
+                            }
+                            if gh.repo.is_empty() {
+                                gh.repo = name.to_string();
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Ok(cfg)

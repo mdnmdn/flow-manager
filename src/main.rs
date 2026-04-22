@@ -58,7 +58,8 @@ async fn main() -> anyhow::Result<()> {
                 state,
                 type_name,
                 max,
-            } => commands::work::list(mine, state, type_name, max).await?,
+                area,
+            } => commands::work::list(mine, state, type_name, max, area).await?,
             cli::TaskCommands::Show {
                 id,
                 no_comments,

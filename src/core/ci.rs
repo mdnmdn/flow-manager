@@ -3,12 +3,14 @@ use crate::core::config::CiConfig;
 #[derive(Debug, Clone)]
 pub enum CiPlatform {
     AzureDevOps,
+    GitHubActions,
 }
 
 impl CiPlatform {
     pub fn label(&self) -> &'static str {
         match self {
             CiPlatform::AzureDevOps => "Azure DevOps",
+            CiPlatform::GitHubActions => "GitHub Actions",
         }
     }
 }
@@ -32,7 +34,7 @@ pub struct CiEnvironment {
 impl CiEnvironment {
     /// Returns `Some` when a known CI environment is detected, `None` otherwise.
     pub fn detect() -> Option<Self> {
-        Self::detect_azure_devops()
+        Self::detect_azure_devops().or_else(Self::detect_github_actions)
     }
 
     /// Returns a minimal forced environment for local CI simulation via `[ci] enabled = true`.
@@ -46,6 +48,49 @@ impl CiEnvironment {
             pr_target_branch: None,
             build_id: None,
         }
+    }
+
+    fn detect_github_actions() -> Option<Self> {
+        if std::env::var("GITHUB_ACTIONS").ok().as_deref() != Some("true") {
+            return None;
+        }
+        let event = std::env::var("GITHUB_EVENT_NAME").ok();
+        let is_pr = event.as_deref() == Some("pull_request");
+
+        let branch = if is_pr {
+            std::env::var("GITHUB_HEAD_REF").ok()?
+        } else {
+            std::env::var("GITHUB_REF")
+                .ok()?
+                .trim_start_matches("refs/heads/")
+                .to_string()
+        };
+
+        let pr_id = if is_pr {
+            std::env::var("GITHUB_REF").ok().and_then(|r| {
+                r.strip_prefix("refs/pull/")
+                    .map(|s| s.trim_end_matches("/merge").to_string())
+            })
+        } else {
+            None
+        };
+
+        Some(CiEnvironment {
+            platform: CiPlatform::GitHubActions,
+            branch,
+            pr_id,
+            pr_source_branch: if is_pr {
+                std::env::var("GITHUB_HEAD_REF").ok()
+            } else {
+                None
+            },
+            pr_target_branch: if is_pr {
+                std::env::var("GITHUB_BASE_REF").ok()
+            } else {
+                None
+            },
+            build_id: std::env::var("GITHUB_RUN_ID").ok(),
+        })
     }
 
     fn detect_azure_devops() -> Option<Self> {
