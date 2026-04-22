@@ -156,7 +156,7 @@ pub async fn show(
 
     let all_threads: Vec<_> = active_threads
         .into_iter()
-        .chain(inactive_threads.into_iter())
+        .chain(inactive_threads)
         .collect();
 
     for t in all_threads {
