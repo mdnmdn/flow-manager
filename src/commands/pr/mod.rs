@@ -154,10 +154,7 @@ pub async fn show(
     .unwrap();
     writeln!(doc).unwrap();
 
-    let all_threads: Vec<_> = active_threads
-        .into_iter()
-        .chain(inactive_threads)
-        .collect();
+    let all_threads: Vec<_> = active_threads.into_iter().chain(inactive_threads).collect();
 
     for t in all_threads {
         let date = t.created_at_date.as_deref().unwrap_or("");
