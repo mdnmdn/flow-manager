@@ -5,9 +5,8 @@ use crate::providers::git::LocalGitProvider;
 use anyhow::{anyhow, Result};
 use regex::Regex;
 
-pub fn structure() -> Result<()> {
-    println!(
-        r#"# review.yaml — structure
+pub fn structure_text() -> &'static str {
+    r#"# review.yaml — structure
 
 A review file has two required fields and three optional arrays.
 
@@ -43,86 +42,77 @@ A review file has two required fields and three optional arrays.
 - Threads whose status is not "active" are skipped during apply (warned during validate).
 - new_threads outside the PR diff are allowed but produce a validate warning.
 - open_points refs that do not match any PR checklist item are a hard error.
+- in the comments add a little snippet of the code referenced (2-3 lines before and after the exact point of interest, or if it is big add at max 10 lines)
+- if the there are threads/points already existing but not addressed cite only in the summary comment, not in the individual thread comments to not create pollution
+- the output have to be correct yaml file, for long text or using special chars use yaml multiline strings for safety
 
-## review.md (alternative format)
-
-Wrap each action in a fenced block tagged  ```action:<type>```.
-Prose outside blocks becomes the summary. End with:
-  **Recommendation:** <value>
-
-Block types: thread, new_thread, open_point
-Each block body is parsed as inline YAML with the same fields as above."#
-    );
-    Ok(())
+"#
 }
 
-pub fn schema() -> Result<()> {
-    println!("# --- JSON Schema ---\n");
-    println!(
-        r#"{{
+pub fn schema_json_text() -> &'static str {
+    r#"{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": ["summary", "recommendation"],
   "additionalProperties": false,
-  "properties": {{
-    "summary": {{ "type": "string", "minLength": 10 }},
-    "recommendation": {{
+  "properties": {
+    "summary": { "type": "string", "minLength": 10 },
+    "recommendation": {
       "type": "string",
       "enum": ["approve", "request_changes", "needs_discussion"]
-    }},
-    "threads": {{
+    },
+    "threads": {
       "type": "array",
-      "items": {{
+      "items": {
         "type": "object",
         "required": ["id", "action", "comment"],
         "additionalProperties": false,
-        "properties": {{
-          "id": {{ "type": "integer" }},
-          "action": {{ "type": "string", "enum": ["resolve", "reply"] }},
-          "comment": {{ "type": "string", "minLength": 1 }}
-        }}
-      }}
-    }},
-    "new_threads": {{
+        "properties": {
+          "id": { "type": "integer" },
+          "action": { "type": "string", "enum": ["resolve", "reply"] },
+          "comment": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "new_threads": {
       "type": "array",
-      "items": {{
+      "items": {
         "type": "object",
         "required": ["file", "line", "severity", "comment"],
         "additionalProperties": false,
-        "properties": {{
-          "file": {{ "type": "string" }},
-          "line": {{ "type": "integer", "minimum": 1 }},
-          "severity": {{
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "severity": {
             "type": "string",
             "enum": ["critical", "major", "minor", "positive"]
-          }},
-          "comment": {{ "type": "string", "minLength": 1 }}
-        }}
-      }}
-    }},
-    "open_points": {{
+          },
+          "comment": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "open_points": {
       "type": "array",
-      "items": {{
+      "items": {
         "type": "object",
         "required": ["ref", "status", "comment"],
         "additionalProperties": false,
-        "properties": {{
-          "ref": {{ "type": "string" }},
-          "status": {{
+        "properties": {
+          "ref": { "type": "string" },
+          "status": {
             "type": "string",
             "enum": ["addressed", "not_addressed", "partially_addressed"]
-          }},
-          "comment": {{ "type": "string" }}
-        }}
-      }}
-    }}
-  }}
-}}"#
-    );
+          },
+          "comment": { "type": "string" }
+        }
+      }
+    }
+  }
+}"#
+}
 
-    println!("\n# --- YAML Schema ---\n");
-    println!(
-        r#"$schema: "http://json-schema.org/draft-07/schema#"
+pub fn schema_yaml_text() -> &'static str {
+    r#"$schema: "http://json-schema.org/draft-07/schema#"
 type: object
 required:
   - summary
@@ -185,7 +175,19 @@ properties:
           enum: [addressed, not_addressed, partially_addressed]
         comment:
           type: string"#
-    );
+}
+
+pub fn structure() -> Result<()> {
+    println!("{}", structure_text());
+    Ok(())
+}
+
+pub fn schema(format: &str) -> Result<()> {
+    if format.starts_with("json") {
+        println!("{}", schema_json_text());
+    } else {
+        println!("{}", schema_yaml_text());
+    }
     Ok(())
 }
 

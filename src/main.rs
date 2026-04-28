@@ -113,7 +113,9 @@ async fn main() -> anyhow::Result<()> {
                     force,
                 } => commands::pr::feedback::apply(file, pr, format, dry_run, force).await?,
                 cli::PrFeedbackCommands::Structure => commands::pr::feedback::structure()?,
-                cli::PrFeedbackCommands::Schema => commands::pr::feedback::schema()?,
+                cli::PrFeedbackCommands::Schema { format } => {
+                    commands::pr::feedback::schema(&format)?
+                }
             },
             cli::PrCommands::Update {
                 title,
@@ -129,6 +131,12 @@ async fn main() -> anyhow::Result<()> {
             } => commands::pr::merge(strategy, delete_source_branch, bypass_policy).await?,
             cli::PrCommands::Review { id } => commands::pr::review(id).await?,
             cli::PrCommands::Comment { id, message } => commands::pr::comment(id, message).await?,
+            cli::PrCommands::ReviewPrompt {
+                pr,
+                text,
+                show_closed_threads,
+                sample,
+            } => commands::pr::review_prompt::run(pr, text, show_closed_threads, sample).await?,
         },
         cli::Commands::Pipeline { command } => match command {
             cli::PipelineCommands::Run { id } => commands::pipeline::run(id).await?,

@@ -1,4 +1,5 @@
 pub mod feedback;
+pub mod review_prompt;
 pub mod thread;
 
 use crate::core::config::Config;
@@ -72,27 +73,20 @@ pub fn extract_open_points(description: &str) -> Vec<String> {
         .collect()
 }
 
-pub async fn show(
-    id: Option<String>,
-    out: Option<String>,
+pub async fn build_pr_doc(
+    pr_id: &str,
+    vcs: &(dyn VCSProvider + Send + Sync),
+    repo_name: &str,
+    show_closed_threads: bool,
     include_project_context: bool,
-) -> Result<()> {
-    let config = Config::load()?;
-    let provider_set = ProviderSet::from_config(&config)?;
-    let tracker = provider_set.issue_tracker;
-    let vcs = provider_set.vcs;
-    let git = LocalGitProvider;
-
-    let repo_name = git.get_repo_name()?;
-    let pr_id = resolve_pr_id(id, vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
-
-    let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
+) -> Result<String> {
+    let pr = vcs.get_pull_request_details(repo_name, pr_id).await?;
     let threads = vcs
-        .get_pull_request_threads(&repo_name, &pr_id)
+        .get_pull_request_threads(repo_name, pr_id)
         .await
         .unwrap_or_default();
     let changed_files = vcs
-        .get_pull_request_changed_files(&repo_name, &pr_id)
+        .get_pull_request_changed_files(repo_name, pr_id)
         .await
         .unwrap_or_default();
 
@@ -154,9 +148,13 @@ pub async fn show(
     .unwrap();
     writeln!(doc).unwrap();
 
-    let all_threads: Vec<_> = active_threads.into_iter().chain(inactive_threads).collect();
+    let shown_threads: Vec<_> = if show_closed_threads {
+        active_threads.into_iter().chain(inactive_threads).collect()
+    } else {
+        active_threads.into_iter().collect()
+    };
 
-    for t in all_threads {
+    for t in shown_threads {
         let date = t.created_at_date.as_deref().unwrap_or("");
         let time = t.created_at_time.as_deref().unwrap_or("");
         let ts = if time.is_empty() {
@@ -223,6 +221,32 @@ pub async fn show(
             doc.push_str(&context_section);
         }
     }
+
+    Ok(doc)
+}
+
+pub async fn show(
+    id: Option<String>,
+    out: Option<String>,
+    include_project_context: bool,
+) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
+    let git = LocalGitProvider;
+
+    let repo_name = git.get_repo_name()?;
+    let pr_id = resolve_pr_id(id, vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
+
+    let doc = build_pr_doc(
+        &pr_id,
+        vcs.as_ref(),
+        &repo_name,
+        true,
+        include_project_context,
+    )
+    .await?;
 
     if let Some(path) = out {
         std::fs::write(&path, &doc)?;

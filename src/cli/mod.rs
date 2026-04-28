@@ -404,6 +404,22 @@ pub enum PrCommands {
         /// PR id, WI id, or branch
         id: String,
     },
+    /// Generate a filled review prompt from a template
+    #[command(alias = "rp")]
+    ReviewPrompt {
+        /// PR id, WI id, or branch (optional, uses current context if omitted)
+        #[arg(long)]
+        pr: Option<String>,
+        /// Template text with {{PLACEHOLDER}} markers (reads from stdin if omitted)
+        #[arg(long)]
+        text: Option<String>,
+        /// Include resolved/closed threads in {{PR_TEXT_FULL}} (default: true)
+        #[arg(long, default_value_t = true)]
+        show_closed_threads: bool,
+        /// Print a sample template listing all available placeholders
+        #[arg(long)]
+        sample: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -482,9 +498,13 @@ pub enum PrFeedbackCommands {
     /// Describe the review file format in plain text
     #[command(alias = "st")]
     Structure,
-    /// Print the JSON schema for review.yaml
+    /// Print the schema for review.yaml
     #[command(alias = "sc")]
-    Schema,
+    Schema {
+        /// Output format: yaml | json (default: yaml)
+        #[arg(long, default_value = "yaml")]
+        format: String,
+    },
 }
 
 #[derive(Subcommand)]

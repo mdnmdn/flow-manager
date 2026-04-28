@@ -13,7 +13,9 @@
       "Bash(cat)",
       "Bash(bash /tmp/check_methods.sh)",
       "Read(//tmp/**)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(just ci-check *)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }
