@@ -20,12 +20,16 @@ pub struct GitHubProvider {
 impl GitHubProvider {
     pub fn new(config: &GitHubConfig) -> Result<Self> {
         let mut headers = header::HeaderMap::new();
-        let mut auth_value = header::HeaderValue::from_str(&format!("token {}", config.token))?;
+        let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", config.token))?;
         auth_value.set_sensitive(true);
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             header::ACCEPT,
             header::HeaderValue::from_static("application/vnd.github.v3+json"),
+        );
+        headers.insert(
+            header::USER_AGENT,
+            header::HeaderValue::from_static("flow-manager"),
         );
 
         let client = Client::builder().default_headers(headers).build()?;
