@@ -355,6 +355,7 @@ pub async fn merge(
 pub async fn review(id: String) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
     let vcs = provider_set.vcs;
     let git = LocalGitProvider;
 
@@ -370,11 +371,8 @@ pub async fn review(id: String) -> Result<()> {
         git.push(false).await?;
     }
 
-    let pr_id = match ContextManager::resolve_id(&id) {
-        IdResolution::PullRequest(id) => id,
-        IdResolution::Ambiguous(id) => id.to_string(),
-        _ => return Err(anyhow!("Could not resolve to a PR")),
-    };
+    let pr_id =
+        resolve_pr_id(Some(id), vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
 
     let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
     let target_branch = pr.source_branch.replace("refs/heads/", "");
