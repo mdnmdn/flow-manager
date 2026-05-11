@@ -18,9 +18,10 @@ project = "your-project"
 pat = "YOUR_PAT_HERE"
 
 # [provider.github]
-# token = "YOUR_TOKEN_HERE"
+# token = "YOUR_PAT_HERE"   # Optional: leave unset and run `fm auth login` instead
 # owner = "your-org"
 # repo = "your-repo"
+# client_id = "Iv1.xxxx"    # Optional: override compiled-in GitHub App Client ID
 
 [fm]
 merge_strategy = "squash"

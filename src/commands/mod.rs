@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod commit;
 pub mod common;
 pub mod context;

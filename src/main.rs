@@ -209,6 +209,11 @@ async fn main() -> anyhow::Result<()> {
                 }
             },
         },
+        cli::Commands::Auth { command } => match command {
+            cli::AuthCommands::Login => commands::auth::login().await?,
+            cli::AuthCommands::Logout => commands::auth::logout().await?,
+            cli::AuthCommands::Status => commands::auth::status().await?,
+        },
         cli::Commands::Version => {
             println!(
                 "fm version {}",

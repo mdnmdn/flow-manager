@@ -76,10 +76,16 @@ fn default_complete() -> String {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GitHubConfig {
-    pub token: String,
+    /// PAT or user access token. Leave unset to use GitHub App Device Flow auth.
+    #[serde(default)]
+    pub token: Option<String>,
     pub owner: String,
     pub repo: String,
     pub base_url: Option<String>,
+    /// Override the compiled-in GitHub App Client ID (for local dev with a dev App).
+    pub client_id: Option<String>,
+    /// Override the compiled-in GitHub App ID (for local dev with a dev App).
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
