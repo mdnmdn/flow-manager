@@ -150,8 +150,27 @@ impl VCSProvider for LocalGitProvider {
     }
 
     async fn checkout_branch(&self, name: &str) -> Result<()> {
-        self.run_git(&["checkout", name])?;
-        Ok(())
+        match self.run_git(&["checkout", name]) {
+            Ok(_) => Ok(()),
+            Err(checkout_err) => {
+                // If only the remote branch exists, create a local tracking branch in one step.
+                let remote_ref = format!("refs/remotes/origin/{}", name);
+                if self
+                    .run_git(&["show-ref", "--verify", "--quiet", &remote_ref])
+                    .is_ok()
+                {
+                    self.run_git(&[
+                        "checkout",
+                        "-b",
+                        name,
+                        "--track",
+                        &format!("origin/{}", name),
+                    ])?;
+                    return Ok(());
+                }
+                Err(checkout_err)
+            }
+        }
     }
 
     async fn get_status(&self) -> Result<String> {
