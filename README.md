@@ -54,6 +54,7 @@ fm pr feedback apply --file review.yaml
 | Code quality | `sonar` |
 | Git sugar | `commit`, `push`, `sync` |
 | CI support | auto-detects Azure DevOps and GitHub Actions; populates config from pipeline env vars |
+| Authentication | `auth login`, `auth logout`, `auth status`, `auth list` |
 
 ---
 
@@ -83,7 +84,7 @@ project = "myproject"
 pat     = ""          # override with FM__PROVIDER__ADO__PAT
 ```
 
-Minimal `fm.toml` for GitHub:
+Minimal `fm.toml` for GitHub (PAT):
 
 ```toml
 [provider]
@@ -95,9 +96,104 @@ owner = "myorg"
 repo  = "myrepo"
 ```
 
+Minimal `fm.toml` for GitHub (App auth — no PAT needed):
+
+```toml
+[provider]
+type = "github"
+
+[provider.github]
+owner   = "myorg"
+repo    = "myrepo"
+account = "default"   # which stored keychain account to use
+```
+
+Run `fm auth login` once after this and the token is stored in the OS keychain. No secrets in the config file.
+
 In CI, ADO populates `url`/`project` from `SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`/`SYSTEM_TEAMPROJECT`; GitHub populates `owner`/`repo` from `GITHUB_REPOSITORY` when left empty.
 
 Run `fm init --discover` to auto-detect the provider from the git remote and generate a config.
+
+---
+
+## GitHub authentication
+
+`fm` supports two authentication methods for GitHub in parallel. Token resolution order for every GitHub API call:
+
+1. `token` in `[provider.github]` / `FM__PROVIDER__GITHUB__TOKEN` env var — explicit PAT
+2. `GITHUB_TOKEN` env var — **automatically set by GitHub Actions**, zero config needed in pipelines
+3. `GH_TOKEN` env var — alternate env var used by the `gh` CLI
+4. OS keychain — token stored by `fm auth login` (GitHub App Device Flow)
+
+### GitHub App Device Flow (local dev)
+
+```bash
+# Authenticate and store a token in the OS keychain
+fm auth login
+
+# Authenticate a second account (e.g. work vs personal)
+fm auth login --account work
+
+# Check status
+fm auth status
+fm auth status --account work
+
+# List all stored accounts
+fm auth list
+
+# Remove an account
+fm auth logout --account work
+```
+
+Per-project, tell fm which account to use:
+
+```toml
+[provider.github]
+owner   = "my-org"
+repo    = "my-repo"
+account = "work"        # defaults to "default"
+```
+
+### App ID and Client ID injection
+
+The GitHub App Client ID is resolved in this order:
+- Compiled-in value (injected at build time via `GITHUB_CLIENT_ID` env var — for release binaries)
+- Runtime `GITHUB_CLIENT_ID` env var (for contributors using their own dev App)
+- `client_id` field in `[provider.github]` (per-project override)
+
+For release CI (GitHub Actions):
+
+```yaml
+- name: Build release
+  run: cargo build --release
+  env:
+    GITHUB_CLIENT_ID: ${{ secrets.GITHUB_APP_CLIENT_ID }}
+    GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+```
+
+Contributors create their own GitHub App for local dev and export `GITHUB_CLIENT_ID` before running `fm auth login`.
+
+### GitHub Actions pipelines
+
+No configuration needed. `GITHUB_TOKEN` is automatically injected by the GitHub Actions runtime and picked up by `fm` without any `fm.toml` changes:
+
+```yaml
+- name: Run fm
+  run: fm pr show
+  # GITHUB_TOKEN is available automatically — no extra setup
+```
+
+### Linux system dependency
+
+The OS keychain on Linux uses `libsecret`. Install the dev library before building:
+
+```bash
+# Debian / Ubuntu
+sudo apt-get install libsecret-1-dev
+
+# Fedora / RHEL
+sudo dnf install libsecret-devel
+```
 
 ---
 

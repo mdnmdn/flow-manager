@@ -144,6 +144,12 @@ pub enum Commands {
         #[arg(short, long)]
         discover: bool,
     },
+    /// Manage GitHub authentication (Device Flow)
+    #[command(alias = "a")]
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands,
+    },
     /// Show the current version
     Version,
 }
@@ -674,6 +680,33 @@ pub enum SonarCommands {
         #[arg(short, long, default_value_t = 20)]
         max: i32,
     },
+}
+
+#[derive(Subcommand)]
+pub enum AuthCommands {
+    /// Authenticate via GitHub App Device Flow and store the token in the OS keychain
+    #[command(alias = "in")]
+    Login {
+        /// Account alias to store credentials under (default: "default")
+        #[arg(long, default_value = "default")]
+        account: String,
+    },
+    /// Remove a stored GitHub App token from the OS keychain
+    Logout {
+        /// Account alias to remove (default: "default")
+        #[arg(long, default_value = "default")]
+        account: String,
+    },
+    /// Show GitHub App authentication status for an account
+    #[command(alias = "st")]
+    Status {
+        /// Account alias to check (default: "default")
+        #[arg(long, default_value = "default")]
+        account: String,
+    },
+    /// List all stored GitHub accounts
+    #[command(alias = "ls")]
+    List,
 }
 
 pub fn parse() -> Cli {

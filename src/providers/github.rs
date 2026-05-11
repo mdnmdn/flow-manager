@@ -17,10 +17,62 @@ pub struct GitHubProvider {
     base_url: String,
 }
 
+fn resolve_token(config: &GitHubConfig) -> Result<String> {
+    // 1. Explicit PAT from fm.toml / FM__PROVIDER__GITHUB__TOKEN env var
+    if let Some(t) = &config.token {
+        if !t.is_empty() {
+            return Ok(t.clone());
+        }
+    }
+
+    // 2. GITHUB_TOKEN — set automatically in GitHub Actions and accepted by the gh CLI
+    if let Ok(t) = std::env::var("GITHUB_TOKEN") {
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+
+    // 3. GH_TOKEN — alternate env var used by the gh CLI
+    if let Ok(t) = std::env::var("GH_TOKEN") {
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+
+    // 4. OS keychain (GitHub App Device Flow), keyed by the configured account alias
+    let account = &config.account;
+    match crate::auth::token_store::load(account) {
+        Ok(Some(stored)) => {
+            if stored.is_expired() {
+                return Err(anyhow!(
+                    "GitHub App token for account '{}' expired.\n\
+                     Run `fm auth login --account {}` to re-authenticate.",
+                    account,
+                    account
+                ));
+            }
+            Ok(stored.access_token)
+        }
+        Ok(None) => Err(anyhow!(
+            "No GitHub token found. Tried (in order):\n\
+             - `token` field in [provider.github] / FM__PROVIDER__GITHUB__TOKEN env\n\
+             - GITHUB_TOKEN env var (auto-set in GitHub Actions)\n\
+             - GH_TOKEN env var\n\
+             - OS keychain account '{}'\n\
+             \n\
+             To fix: set one of the above, or run `fm auth login` to authenticate via GitHub App.",
+            account
+        )),
+        Err(e) => Err(anyhow!("Failed to load GitHub App token: {}", e)),
+    }
+}
+
 impl GitHubProvider {
     pub fn new(config: &GitHubConfig) -> Result<Self> {
+        let token = resolve_token(config)?;
+
         let mut headers = header::HeaderMap::new();
-        let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", config.token))?;
+        let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", token))?;
         auth_value.set_sensitive(true);
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
@@ -1055,10 +1107,13 @@ mod tests {
     async fn setup_mock_server() -> (ServerGuard, GitHubProvider) {
         let server = Server::new_async().await;
         let config = crate::core::config::GitHubConfig {
-            token: "test-token".to_string(),
+            token: Some("test-token".to_string()),
             owner: "test-owner".to_string(),
             repo: "test-repo".to_string(),
             base_url: Some(server.url()),
+            client_id: None,
+            app_id: None,
+            account: "default".to_string(),
         };
         let provider = GitHubProvider::new(&config).unwrap();
         (server, provider)

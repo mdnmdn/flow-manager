@@ -12,10 +12,16 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 ├── src/
 │   ├── main.rs                   # CLI entry point, subcommand routing
 │   ├── lib.rs                    # Library entry point (re-exports cli, commands, core, providers)
+│   ├── auth/                     # GitHub App authentication (Device Flow + OS keychain)
+│   │   ├── mod.rs
+│   │   ├── app_config.rs         # App Client ID / App ID resolution (compile-time then runtime env)
+│   │   ├── device_flow.rs        # GitHub Device Flow: device code → poll → StoredToken
+│   │   └── token_store.rs        # OS keychain storage; multi-account index at ~/.config/flow-manager/
 │   ├── cli/
 │   │   └── mod.rs                # Full CLI definition using clap (Commands, TaskCommands, PrCommands, …)
 │   ├── commands/                 # Command implementations organised by root command
 │   │   ├── mod.rs
+│   │   ├── auth.rs               # fm auth login / logout / status / list
 │   │   ├── context.rs            # fm context
 │   │   ├── commit.rs             # fm commit
 │   │   ├── push.rs               # fm push
@@ -69,7 +75,7 @@ The Flow Manager (`fm`) is a CLI tool designed to streamline developer workflows
 
 Uses `clap` derive macros to define the full command-line interface in a single `mod.rs`.
 
-- **Porcelain commands:** `Task`, `Pr`, `Todo`, `Pipeline`, `Context`, `Commit`, `Push`, `Sync`, `Sonar`, `Doctor`, `Init`
+- **Porcelain commands:** `Task`, `Pr`, `Todo`, `Pipeline`, `Context`, `Commit`, `Push`, `Sync`, `Sonar`, `Doctor`, `Init`, `Auth`
 - **Plumbing commands:** nested under `Plumbing` — direct access to Git and ADO primitives
 
 All `fm task new/load/list/show` (work item lifecycle) and `fm task hold/update/sync/complete/comment` (activity lifecycle) are routed through the same `Task` subcommand.
@@ -89,6 +95,16 @@ The "brain" of the application — provider-agnostic logic.
 - **`config.rs`:** loads `fm.toml` / `fm.yaml` / env vars via the `config` crate; `ProviderConfig` uses a plain struct with a `kind` field (`"ado"`, `"github"`, `"gitlab"`) and optional sub-configs
 - **`context.rs`:** derives Baseline vs. Activity context from the branch name; resolves ambiguous IDs (`w-123`, `pr-123`, plain numbers); slugifies titles for branch names; formats output via Handlebars templates
 - **`models.rs`:** shared domain structs (`WorkItem`, `PullRequest`, `Pipeline`, `PipelineRun`, `QualityIssue`, …)
+
+### 5. Auth Layer (`src/auth/`)
+
+Handles GitHub App authentication independently of the provider layer.
+
+- **`app_config.rs`**: resolves `GITHUB_CLIENT_ID` and `GITHUB_APP_ID` — compile-time constants via `option_env!` (baked into release binaries by CI) with a runtime env-var fallback so contributors can point at their own dev App without recompiling
+- **`device_flow.rs`**: implements the full GitHub Device Flow — requests a device code, prompts the user (optionally opens the browser), polls for authorization with backoff, and returns a `StoredToken` including the refresh token
+- **`token_store.rs`**: stores tokens in the OS keychain via the `keyring` crate, keyed by account alias (`github:{alias}`); maintains a non-sensitive account index at `~/.config/flow-manager/accounts.json`; exposes `load_valid_token` which silently refreshes tokens expiring within 30 minutes
+
+Token resolution in `GitHubProvider` tries (in order): explicit `token` config field → `GITHUB_TOKEN` env var → `GH_TOKEN` env var → OS keychain.
 
 ### 4. Provider Layer (`src/providers/`)
 

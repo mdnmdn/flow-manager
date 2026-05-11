@@ -21,9 +21,37 @@ base_url = ""        # Optional: GitHub Enterprise base URL (defaults to https:/
 
 ### Authentication
 
-Token auth via `Authorization: token {token}` header with `Accept: application/vnd.github.v3+json`.
+The GitHub provider supports several authentication methods, resolved in the following priority:
 
-**Required token scopes:**
+1.  **Explicit Token (PAT)**: Set via the `token` field in `fm.toml` or the `FM__PROVIDER__GITHUB__TOKEN` environment variable.
+2.  **GitHub Actions Token**: Automatically detected via the `GITHUB_TOKEN` environment variable in CI environments.
+3.  **GitHub CLI Token**: Detected via the `GH_TOKEN` environment variable.
+4.  **OS Keychain (Device Flow)**: Used when no explicit token is found. Requires authentication via `fm auth login`.
+
+#### GitHub App / Device Flow
+
+For local development, the recommended method is to use `fm auth login`. This initiates the GitHub OAuth Device Flow:
+1.  Run `fm auth login`.
+2.  Open the provided URL and enter the user code.
+3.  The resulting User Access Token is stored securely in your OS keychain.
+4.  Tokens are automatically refreshed if they expire (when using `load_valid_token`).
+
+#### Multi-Account Support
+
+`fm` supports multiple GitHub accounts. You can manage them using the `--account` flag:
+- `fm auth login --account work`
+- `fm auth status --account work`
+- `fm auth list` (to see all stored accounts)
+
+In your project's `fm.toml`, bind a specific account:
+```toml
+[provider.github]
+account = "work"
+```
+
+#### Token Scopes (for PATs)
+
+**Required classic token scopes:**
 - `repo` — Issues, pull requests, branches
 - `workflow` — GitHub Actions dispatch
 
@@ -32,8 +60,6 @@ Token auth via `Authorization: token {token}` header with `Accept: application/v
 - Pull Requests (read/write)
 - Contents (read)
 - Actions (read/write)
-
-Set token via `FM__PROVIDER__GITHUB__TOKEN` environment variable or in `.env`.
 
 ### Base URL Override
 

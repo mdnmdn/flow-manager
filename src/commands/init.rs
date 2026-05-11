@@ -18,9 +18,11 @@ project = "your-project"
 pat = "YOUR_PAT_HERE"
 
 # [provider.github]
-# token = "YOUR_TOKEN_HERE"
+# token = "YOUR_PAT_HERE"   # Optional: omit to use `fm auth login` (GitHub App Device Flow)
 # owner = "your-org"
 # repo = "your-repo"
+# account = "default"       # Optional: which stored keychain account to use (fm auth login --account NAME)
+# client_id = "Iv1.xxxx"    # Optional: override compiled-in GitHub App Client ID
 
 [fm]
 merge_strategy = "squash"

@@ -70,18 +70,30 @@ pat     = "YOUR_PAT_HERE"
 type = "github"
 
 [provider.github]
-token    = "YOUR_TOKEN_HERE"
+# Authentication — choose one approach:
+# Option A: PAT (also accepted: GITHUB_TOKEN / GH_TOKEN env vars)
+token    = "YOUR_PAT_HERE"
+# Option B: GitHub App Device Flow — omit token, run `fm auth login`
+# account  = "default"        # which keychain account to use (default: "default")
+
 owner    = "your-org"
 repo     = "your-repo"
 base_url = "https://api.github.com"   # optional, for GitHub Enterprise
+
+# GitHub App overrides (optional — override compiled-in App Client ID)
+# client_id = "Iv1.xxxxxxxxxxxx"
+# app_id    = "123456"
 ```
 
-| Field      | Type   | Description |
-|------------|--------|-------------|
-| `token`    | string | Personal Access Token or App token |
-| `owner`    | string | Organisation or user name |
-| `repo`     | string | Repository name |
-| `base_url` | string | Override for GitHub Enterprise (optional) |
+| Field       | Type   | Required | Description |
+|-------------|--------|----------|-------------|
+| `token`     | string | no       | PAT or user access token. Omit to use App auth or env vars. |
+| `owner`     | string | yes      | Organisation or user name |
+| `repo`      | string | yes      | Repository name |
+| `base_url`  | string | no       | Override for GitHub Enterprise |
+| `account`   | string | no       | Keychain account alias to use when `token` is unset (default: `"default"`) |
+| `client_id` | string | no       | Override compiled-in GitHub App Client ID |
+| `app_id`    | string | no       | Override compiled-in GitHub App ID |
 
 #### GitLab
 
@@ -167,6 +179,9 @@ Double underscores (`__`) separate nesting levels. Examples:
 | `provider.github.owner`     | `FM__PROVIDER__GITHUB__OWNER`     |
 | `provider.github.repo`      | `FM__PROVIDER__GITHUB__REPO`      |
 | `provider.github.base_url`  | `FM__PROVIDER__GITHUB__BASE_URL`  |
+| `provider.github.account`   | `FM__PROVIDER__GITHUB__ACCOUNT`   |
+| `provider.github.client_id` | `FM__PROVIDER__GITHUB__CLIENT_ID` |
+| `provider.github.app_id`    | `FM__PROVIDER__GITHUB__APP_ID`    |
 | `fm.default_target`         | `FM__FM__DEFAULT_TARGET`          |
 | `sonar.token`               | `FM__SONAR__TOKEN`                |
 
@@ -205,4 +220,49 @@ When running inside a CI pipeline, `fm` populates missing config fields from wel
 
 `GITHUB_REPOSITORY` has the form `owner/repo`. Both fields are only written when empty in the config file.
 
-The token (`FM__PROVIDER__GITHUB__TOKEN` or `FM__PROVIDER__ADO__PAT`) must always be supplied explicitly — it is never auto-populated from pipeline variables.
+### Token resolution order (GitHub)
+
+For every GitHub API call, `fm` resolves the token in this order:
+
+1. `token` in `[provider.github]` / `FM__PROVIDER__GITHUB__TOKEN` — explicit PAT
+2. `GITHUB_TOKEN` env var — **set automatically in every GitHub Actions job**; no config needed
+3. `GH_TOKEN` env var — alternate env var used by the `gh` CLI
+4. OS keychain — token stored by `fm auth login` under the account alias from `account`
+
+This means GitHub Actions pipelines work with zero `fm.toml` changes: `GITHUB_TOKEN` is always present. For ADO, the PAT must still be supplied explicitly (`FM__PROVIDER__ADO__PAT`).
+
+---
+
+## GitHub App authentication
+
+`fm` supports GitHub App Device Flow as a PAT alternative. Tokens are stored in the OS keychain (not in the config file), so no secrets need to be committed.
+
+```bash
+fm auth login                     # authenticate default account
+fm auth login --account work      # authenticate a named account
+fm auth status [--account work]   # show expiry and GitHub username
+fm auth list                      # all stored accounts
+fm auth logout [--account work]   # remove stored token
+```
+
+### App ID and Client ID
+
+The App Client ID is resolved in this order:
+1. Compiled-in via `option_env!("GITHUB_CLIENT_ID")` — injected by release CI
+2. Runtime `GITHUB_CLIENT_ID` env var — for contributors using their own dev App
+3. `client_id` field in `[provider.github]` — per-project override
+
+Release binaries have the prod Client ID baked in at compile time. Contributors compile without it and set the env var at runtime.
+
+### Token storage
+
+Tokens are stored in the OS keychain:
+- **macOS**: Keychain Access
+- **Linux**: `libsecret` / GNOME Keyring (requires `libsecret-1-dev`)
+- **Windows**: Windows Credential Manager
+
+Each account alias is stored under a separate keychain entry (`flow-manager` / `github:{alias}`). A non-sensitive index of account metadata (username, expiry) is kept at `~/.config/flow-manager/accounts.json`.
+
+### Token refresh
+
+Access tokens expire after 8 hours. On the next `fm auth login`, the stored refresh token is used automatically to obtain a new access token without re-running the Device Flow. If the refresh token is also expired, the full Device Flow restarts.

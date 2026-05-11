@@ -114,3 +114,53 @@ The `{hash}` is an FNV-1a 64-bit hash of the git repository root path, scoping t
 - **Idempotency:** state-creating operations (`create_branch`, `create_pull_request`, `create_work_item`) check for existing resources before creating; duplicate links and state transitions are silently skipped.
 - **Submodule transparency:** `fm commit`, `fm push`, and `fm sync` detect pending `_docs` changes and commit/push the submodule before the parent repo.
 - **Todo resolution:** `fm todo` commands accept a numeric task ID or a case-insensitive title fragment scoped to the current WI's children.
+
+## 10. Authentication (`src/auth/`) [COMPLETED]
+
+Provides GitHub App authentication (OAuth Device Flow) as a PAT alternative. Operates independently of the provider layer; the provider calls `token_store::load` only as a last resort after checking all env-var sources.
+
+### `app_config.rs`
+
+- `client_id() -> Option<String>`: compiled-in `GITHUB_CLIENT_ID` (via `option_env!`) falling back to the runtime env var of the same name.
+- `app_id() -> Option<String>`: same pattern for `GITHUB_APP_ID`.
+
+CI release builds bake the prod Client ID into the binary. Contributors export the env var at runtime to point at their own dev GitHub App — no recompile needed.
+
+### `device_flow.rs`
+
+- `run_device_flow(client_id) -> Result<StoredToken>` (async): full Device Flow — `POST /login/device/code`, prompt user + attempt browser open, poll `POST /login/oauth/access_token` with exponential backoff on `slow_down`, error on `expired_token` / `access_denied`.
+- `refresh_token(client_id, refresh_token) -> Result<StoredToken>` (async): uses `grant_type=refresh_token` to silently obtain a new access token before expiry.
+
+### `token_store.rs`
+
+**Types:**
+- `StoredToken { access_token, refresh_token, expires_at }` — serialised as JSON in the keychain.
+- `AccountMeta { alias, username, expires_at }` — stored in `~/.config/flow-manager/accounts.json` (non-sensitive; enables `fm auth list` without keychain enumeration).
+
+**Token API** (all take `account: &str` — the keychain alias, default `"default"`):
+- `save(account, token)`: stores JSON blob in OS keychain under `flow-manager` / `github:{account}`.
+- `load(account) -> Option<StoredToken>`: reads from keychain; returns `None` on missing entry.
+- `delete(account)`: removes keychain entry; no-ops on missing.
+- `load_valid_token(account, client_id) -> Result<Option<String>>` (async): loads token, calls `refresh_token` if expiring within 30 minutes, returns `None` if no token stored, `Err` if expired and refresh failed.
+
+**Account index API:**
+- `list_accounts() -> Vec<AccountMeta>`: reads index file.
+- `save_account_meta(meta)`: upserts by alias.
+- `remove_account_meta(alias)`: removes from index.
+
+### `commands/auth.rs`
+
+- `login(account)`: runs Device Flow, saves token + account meta, prints authenticated username.
+- `logout(account)`: deletes keychain entry + account meta.
+- `status(account)`: verifies token against `GET /user`, prints username and time-to-expiry.
+- `list()`: prints all entries from the account index.
+
+### Token resolution in `GitHubProvider`
+
+`resolve_token(config)` checks in order:
+1. `config.token` — explicit PAT (from `fm.toml` or `FM__PROVIDER__GITHUB__TOKEN`)
+2. `GITHUB_TOKEN` env var — injected automatically by GitHub Actions
+3. `GH_TOKEN` env var — `gh` CLI convention
+4. OS keychain via `token_store::load(config.account)` — GitHub App token
+
+Steps 2 and 3 mean GitHub Actions pipelines need no `fm.toml` changes at all.
