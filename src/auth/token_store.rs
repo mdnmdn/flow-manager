@@ -20,6 +20,20 @@ fn accounts_index_path() -> PathBuf {
         .join("accounts.json")
 }
 
+fn tokens_dir() -> PathBuf {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home)
+        .join(".config")
+        .join("flow-manager")
+        .join("tokens")
+}
+
+fn token_fallback_path(account: &str) -> PathBuf {
+    tokens_dir().join(format!("{}.json", account))
+}
+
 // ── Token ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,21 +79,28 @@ fn now_secs() -> u64 {
 }
 
 pub fn save(account: &str, token: &StoredToken) -> Result<()> {
+    let json = serde_json::to_string(token)?;
+
     let entry = Entry::new(SERVICE, &keyring_user(account))
         .map_err(|e| anyhow!("Keychain error: {}", e))?;
-    let json = serde_json::to_string(token)?;
-    entry
-        .set_password(&json)
-        .map_err(|e| anyhow!("Failed to save token to keychain: {}", e))
+
+    if entry.set_password(&json).is_err() {
+        save_token_fallback(account, token)?;
+        return Ok(());
+    }
+
+    save_token_fallback(account, token)?;
+    Ok(())
 }
 
 pub fn load(account: &str) -> Result<Option<StoredToken>> {
     let entry = Entry::new(SERVICE, &keyring_user(account))
         .map_err(|e| anyhow!("Keychain error: {}", e))?;
+
     match entry.get_password() {
         Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(anyhow!("Failed to load token from keychain: {}", e)),
+        Err(keyring::Error::NoEntry) => load_token_fallback(account),
+        Err(_) => load_token_fallback(account),
     }
 }
 
@@ -87,9 +108,38 @@ pub fn delete(account: &str) -> Result<()> {
     let entry = Entry::new(SERVICE, &keyring_user(account))
         .map_err(|e| anyhow!("Keychain error: {}", e))?;
     match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(_) => {}
+    }
+
+    delete_token_fallback(account)?;
+    Ok(())
+}
+
+fn save_token_fallback(account: &str, token: &StoredToken) -> Result<()> {
+    let path = token_fallback_path(account);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string(token)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+fn load_token_fallback(account: &str) -> Result<Option<StoredToken>> {
+    let path = token_fallback_path(account);
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_str(&contents)?))
+}
+
+fn delete_token_fallback(account: &str) -> Result<()> {
+    let path = token_fallback_path(account);
+    match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(anyhow!("Failed to delete token from keychain: {}", e)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
     }
 }
 

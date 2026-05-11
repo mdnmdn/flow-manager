@@ -215,6 +215,16 @@ impl GitHubProvider {
 
         terms.join(" ")
     }
+
+    async fn get_authenticated_login(&self) -> Option<String> {
+        let url = format!("{}/user", self.base_url);
+        let resp = self.client.get(&url).send().await.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let body: Value = resp.json().await.ok()?;
+        body["login"].as_str().map(|s| s.to_string())
+    }
 }
 
 #[async_trait]
@@ -265,7 +275,13 @@ impl IssueTracker for GitHubProvider {
             payload["body"] = json!(desc);
         }
 
-        if let Some(assigned) = assigned_to {
+        let resolved_assignee = if let Some(assigned) = assigned_to {
+            Some(assigned.to_string())
+        } else {
+            self.get_authenticated_login().await
+        };
+
+        if let Some(assigned) = resolved_assignee {
             payload["assignees"] = json!(vec![assigned]);
         }
 
@@ -1154,6 +1170,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_work_item() {
         let (mut server, provider) = setup_mock_server().await;
+        let me = server
+            .mock("GET", "/user")
+            .with_status(200)
+            .with_body(json!({ "login": "alice" }).to_string())
+            .create_async()
+            .await;
         let mock = server
             .mock("POST", "/repos/test-owner/test-repo/issues")
             .with_status(201)
@@ -1163,7 +1185,7 @@ mod tests {
                     "title": "New task",
                     "state": "open",
                     "labels": [{"name": "type:task"}],
-                    "assignee": null
+                    "assignee": {"login": "alice"}
                 })
                 .to_string(),
             )
@@ -1176,6 +1198,8 @@ mod tests {
             .unwrap();
         assert_eq!(result.title, "New task");
         assert_eq!(result.work_item_type, "Task");
+        assert_eq!(result.assigned_to.as_deref(), Some("alice"));
+        me.assert_async().await;
         mock.assert_async().await;
     }
 

@@ -21,6 +21,12 @@ struct WorkNewResult {
     target: String,
 }
 
+fn is_github_empty_pr_error(err: &anyhow::Error) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("no commits between")
+        || (msg.contains("422 unprocessable entity") && msg.contains("/pulls"))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     title: String,
@@ -92,7 +98,7 @@ pub async fn run(
     if !is_draft_supported {
         println!("Warning: Draft pull requests are not supported by this provider. Creating a regular PR.");
     }
-    let pr = vcs
+    let pr_id = match vcs
         .create_pull_request(
             &repo_name,
             &branch_name,
@@ -102,7 +108,25 @@ pub async fn run(
             is_draft_supported,
             &[&wi.id],
         )
-        .await?;
+        .await
+    {
+        Ok(pr) => format!(
+            "#{}{}",
+            pr.id,
+            if is_draft_supported { " (draft)" } else { "" }
+        ),
+        Err(e)
+            if config.provider.as_ref().map(|p| p.kind.as_str()) == Some("github")
+                && is_github_empty_pr_error(&e) =>
+        {
+            println!(
+                "PR was not created yet (no commits between `{}` and `{}`). Commit and push changes, then open the PR.",
+                target_branch, branch_name
+            );
+            "not created yet".to_string()
+        }
+        Err(e) => return Err(e),
+    };
 
     // 6. Set WI state to Active
     tracker
@@ -125,11 +149,11 @@ pub async fn run(
         wi_type: wi.work_item_type,
         state: tracker.default_in_progress_status().to_string(),
         branch: branch_name,
-        pr_id: pr.id,
+        pr_id,
         target: target_branch,
     };
 
-    let template = "## New Activity Started\n\n| | |\n|-|---|\n| Work Item | #{{wi_id}} — {{title}} |\n| Type      | {{wi_type}} |\n| State     | {{state}} |\n| Branch    | `{{branch}}` |\n| PR        | #{{pr_id}} (draft) |\n| Target    | `{{target}}` |\n";
+    let template = "## New Activity Started\n\n| | |\n|-|---|\n| Work Item | #{{wi_id}} — {{title}} |\n| Type      | {{wi_type}} |\n| State     | {{state}} |\n| Branch    | `{{branch}}` |\n| PR        | {{pr_id}} |\n| Target    | `{{target}}` |\n";
     println!(
         "{}",
         OutputFormatter::format(&result, "markdown", Some(template))?
@@ -218,16 +242,30 @@ pub async fn load(
         if pr.is_none() {
             println!("Creating draft PR for branch `{}`...", branch);
             let is_draft_supported = vcs.capabilities().draft_pull_requests;
-            vcs.create_pull_request(
-                &repo_name,
-                &branch,
-                &target_branch,
-                &wi.title,
-                "PR created by fm load --init",
-                is_draft_supported,
-                &[&wi.id],
-            )
-            .await?;
+            let pr_result = vcs
+                .create_pull_request(
+                    &repo_name,
+                    &branch,
+                    &target_branch,
+                    &wi.title,
+                    "PR created by fm load --init",
+                    is_draft_supported,
+                    &[&wi.id],
+                )
+                .await;
+
+            if let Err(e) = pr_result {
+                if config.provider.as_ref().map(|p| p.kind.as_str()) == Some("github")
+                    && is_github_empty_pr_error(&e)
+                {
+                    println!(
+                        "PR deferred: no commits between `{}` and `{}` yet.",
+                        target_branch, branch
+                    );
+                } else {
+                    return Err(e);
+                }
+            }
         }
     }
 

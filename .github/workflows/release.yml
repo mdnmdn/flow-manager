@@ -45,6 +45,9 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
         env:
           FM_VERSION: ${{ github.ref_name }}
+          EMBEDDED_GITHUB_CLIENT_ID: ${{ vars.EMBEDDED_GITHUB_CLIENT_ID }}
+          EMBEDDED_GITHUB_APP_ID: ${{ vars.EMBEDDED_GITHUB_APP_ID }}
+          EMBEDDED_GITHUB_APP_NAME: ${{ vars.EMBEDDED_GITHUB_APP_NAME }}
 
       - name: Package
         run: |
