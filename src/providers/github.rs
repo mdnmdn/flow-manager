@@ -18,26 +18,49 @@ pub struct GitHubProvider {
 }
 
 fn resolve_token(config: &GitHubConfig) -> Result<String> {
-    // PAT from config/env takes priority
+    // 1. Explicit PAT from fm.toml / FM__PROVIDER__GITHUB__TOKEN env var
     if let Some(t) = &config.token {
         if !t.is_empty() {
             return Ok(t.clone());
         }
     }
-    // Fall back to GitHub App token stored in the OS keychain
-    match crate::auth::token_store::load() {
+
+    // 2. GITHUB_TOKEN — set automatically in GitHub Actions and accepted by the gh CLI
+    if let Ok(t) = std::env::var("GITHUB_TOKEN") {
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+
+    // 3. GH_TOKEN — alternate env var used by the gh CLI
+    if let Ok(t) = std::env::var("GH_TOKEN") {
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+
+    // 4. OS keychain (GitHub App Device Flow), keyed by the configured account alias
+    let account = &config.account;
+    match crate::auth::token_store::load(account) {
         Ok(Some(stored)) => {
             if stored.is_expired() {
                 return Err(anyhow!(
-                    "GitHub App token expired. Run `fm auth login` to re-authenticate."
+                    "GitHub App token for account '{}' expired.\n\
+                     Run `fm auth login --account {}` to re-authenticate.",
+                    account, account
                 ));
             }
             Ok(stored.access_token)
         }
         Ok(None) => Err(anyhow!(
-            "No GitHub token found.\n\
-             Set `token` in [provider.github] config / GITHUB_TOKEN env, \
-             or run `fm auth login` to authenticate via GitHub App."
+            "No GitHub token found. Tried (in order):\n\
+             - `token` field in [provider.github] / FM__PROVIDER__GITHUB__TOKEN env\n\
+             - GITHUB_TOKEN env var (auto-set in GitHub Actions)\n\
+             - GH_TOKEN env var\n\
+             - OS keychain account '{}'\n\
+             \n\
+             To fix: set one of the above, or run `fm auth login` to authenticate via GitHub App.",
+            account
         )),
         Err(e) => Err(anyhow!("Failed to load GitHub App token: {}", e)),
     }
@@ -1089,6 +1112,7 @@ mod tests {
             base_url: Some(server.url()),
             client_id: None,
             app_id: None,
+            account: "default".to_string(),
         };
         let provider = GitHubProvider::new(&config).unwrap();
         (server, provider)

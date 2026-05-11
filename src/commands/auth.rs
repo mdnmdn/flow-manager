@@ -1,8 +1,9 @@
 use crate::auth::{app_config, device_flow, token_store};
+use crate::auth::token_store::AccountMeta;
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 
-pub async fn login() -> Result<()> {
+pub async fn login(account: &str) -> Result<()> {
     let client_id = app_config::client_id().ok_or_else(|| {
         anyhow!(
             "GitHub App Client ID not configured.\n\
@@ -10,63 +11,79 @@ pub async fn login() -> Result<()> {
         )
     })?;
 
-    println!("Authenticating with GitHub (Device Flow)...");
+    println!("Authenticating with GitHub (Device Flow) for account '{}'...", account);
 
     let token = device_flow::run_device_flow(&client_id).await?;
-    token_store::save(&token)?;
+    token_store::save(account, &token)?;
 
-    // Verify the token by fetching the authenticated user
-    let login_name = fetch_github_username(&token.access_token).await;
-    match login_name {
-        Some(name) => println!("Authenticated as @{}", name),
-        None => println!("Authenticated successfully."),
-    }
+    let username = fetch_github_username(&token.access_token).await;
+    let username = username.as_deref().unwrap_or("unknown");
 
+    token_store::save_account_meta(&AccountMeta {
+        alias: account.to_string(),
+        username: username.to_string(),
+        expires_at: token.expires_at,
+    })?;
+
+    println!("Authenticated as @{} (account: '{}')", username, account);
     Ok(())
 }
 
-pub async fn logout() -> Result<()> {
-    token_store::delete()?;
-    println!("Logged out from GitHub App.");
+pub async fn logout(account: &str) -> Result<()> {
+    token_store::delete(account)?;
+    token_store::remove_account_meta(account)?;
+    println!("Logged out account '{}'.", account);
     Ok(())
 }
 
-pub async fn status() -> Result<()> {
-    let stored = match token_store::load()? {
+pub async fn status(account: &str) -> Result<()> {
+    let stored = match token_store::load(account)? {
         Some(t) => t,
         None => {
-            println!("Not logged in via GitHub App.");
-            println!("Run `fm auth login` to authenticate.");
+            println!("Account '{}' is not logged in.", account);
+            println!("Run `fm auth login --account {}` to authenticate.", account);
             return Ok(());
         }
     };
 
     if stored.is_expired() {
-        println!("GitHub App token is expired.");
-        println!("Run `fm auth login` to re-authenticate.");
+        println!("Token for account '{}' is expired.", account);
+        println!("Run `fm auth login --account {}` to re-authenticate.", account);
         return Ok(());
     }
 
-    // Verify token is still valid with GitHub
     match fetch_github_username(&stored.access_token).await {
         Some(name) => {
-            print!("Logged in as @{}", name);
+            print!("Account '{}' logged in as @{}", account, name);
             match stored.seconds_until_expiry() {
                 Some(0) => println!(" (token expired)"),
                 Some(secs) => {
                     let hours = secs / 3600;
                     let minutes = (secs % 3600) / 60;
-                    println!(" (token expires in {}h {}m)", hours, minutes);
+                    println!(" (expires in {}h {}m)", hours, minutes);
                 }
                 None => println!(" (no expiry set)"),
             }
         }
         None => {
-            println!("GitHub App token is invalid or expired.");
-            println!("Run `fm auth login` to re-authenticate.");
+            println!("Token for account '{}' is invalid or expired.", account);
+            println!("Run `fm auth login --account {}` to re-authenticate.", account);
         }
     }
 
+    Ok(())
+}
+
+pub async fn list() -> Result<()> {
+    let accounts = token_store::list_accounts()?;
+    if accounts.is_empty() {
+        println!("No accounts stored. Run `fm auth login` to authenticate.");
+        return Ok(());
+    }
+    println!("Stored GitHub accounts:");
+    for meta in &accounts {
+        println!("  {} — @{} ({})", meta.alias, meta.username, meta.expiry_summary());
+    }
     Ok(())
 }
 

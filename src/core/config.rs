@@ -86,6 +86,13 @@ pub struct GitHubConfig {
     pub client_id: Option<String>,
     /// Override the compiled-in GitHub App ID (for local dev with a dev App).
     pub app_id: Option<String>,
+    /// Which stored keychain account to use when no token is set (default: "default").
+    #[serde(default = "default_github_account")]
+    pub account: String,
+}
+
+fn default_github_account() -> String {
+    "default".to_string()
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

@@ -210,9 +210,10 @@ async fn main() -> anyhow::Result<()> {
             },
         },
         cli::Commands::Auth { command } => match command {
-            cli::AuthCommands::Login => commands::auth::login().await?,
-            cli::AuthCommands::Logout => commands::auth::logout().await?,
-            cli::AuthCommands::Status => commands::auth::status().await?,
+            cli::AuthCommands::Login { account } => commands::auth::login(&account).await?,
+            cli::AuthCommands::Logout { account } => commands::auth::logout(&account).await?,
+            cli::AuthCommands::Status { account } => commands::auth::status(&account).await?,
+            cli::AuthCommands::List => commands::auth::list().await?,
         },
         cli::Commands::Version => {
             println!(
