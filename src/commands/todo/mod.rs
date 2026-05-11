@@ -216,6 +216,13 @@ pub async fn update(
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 
@@ -247,6 +254,13 @@ pub async fn next(pick_it: bool) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
     let tracker = provider_set.issue_tracker;
+
+    if !tracker.capabilities().work_item_hierarchy {
+        return Err(anyhow!(
+            "Work item hierarchy is not supported by this provider. Todo commands are unavailable."
+        ));
+    }
+
     let git = LocalGitProvider;
     let branch = git.get_current_branch().await?;
 

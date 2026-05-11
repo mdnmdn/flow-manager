@@ -13,7 +13,12 @@ pub struct ProviderSet {
 
 impl ProviderSet {
     pub fn from_config(config: &Config) -> Result<Self> {
-        match config.provider.as_ref().unwrap() {
+        let provider = config
+            .provider
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Provider configuration is missing"))?;
+
+        match provider {
             ProviderConfig::Ado(c) => {
                 let ado = Arc::new(AzureDevOpsProvider::new(c)?);
                 Ok(ProviderSet {

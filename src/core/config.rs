@@ -26,10 +26,13 @@ pub struct AdoConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GitHubConfig {
-    pub token: String,
+    pub token: Option<String>,
     pub owner: String,
     pub repo: String,
     pub base_url: Option<String>,
+    pub client_id: Option<String>,
+    pub app_id: Option<String>,
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
