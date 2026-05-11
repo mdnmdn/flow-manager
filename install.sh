@@ -36,7 +36,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --help|-h)
-      echo "Usage: $0 [OPTIONS]"
+      script_name="$(basename "${BASH_SOURCE[0]:-$0}")"
+      if [[ "${script_name}" == "bash" || "${script_name}" == "stdin" ]]; then
+        script_name="install.sh"
+      fi
+      echo "Usage: ${script_name} [OPTIONS]"
       echo "Options:"
       echo "  -v, --version VERSION  Specify version to install (e.g., 1.0.0 or v1.0.0 - v prefix auto-removed)"
       echo "  -d, --install-dir DIR  Specify installation directory (default: \$HOME/.local/bin)"
@@ -283,7 +287,11 @@ main() {
   echo "For more information, visit: https://github.com/${REPO}"
 }
 
-# Run the installer only if script is executed directly (not sourced)
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+# Run the installer when executed (file or stdin), but not when sourced.
+# This supports:
+# - bash install.sh
+# - cat install.sh | bash
+# - curl ... | bash
+if ! (return 0 2>/dev/null); then
   main "$@"
 fi
