@@ -184,13 +184,38 @@ check_path() {
   else
     log_warning "${INSTALL_DIR} is not in your PATH"
     echo ""
-    echo "To add it to your PATH, add this line to your shell profile:"
-    echo "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+    echo "You can still run fm directly from:"
+    echo "  ${INSTALL_DIR}/${BINARY_NAME}"
     echo ""
-    echo "For bash users: echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.bashrc"
-    echo "For zsh users:  echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.zshrc"
+    echo "To use 'fm' without full path, choose one option:"
     echo ""
-    echo "Then restart your terminal or run: source ~/.bashrc (or ~/.zshrc)"
+    echo "1) Add ${INSTALL_DIR} to PATH:"
+    echo "   export PATH=\"\$PATH:${INSTALL_DIR}\""
+    echo ""
+    case "$(basename "${SHELL:-}")" in
+      zsh)
+        echo "   Persist for zsh:"
+        echo "   echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.zshrc"
+        echo "   source ~/.zshrc"
+        ;;
+      bash)
+        echo "   Persist for bash:"
+        echo "   echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.bashrc"
+        echo "   source ~/.bashrc"
+        ;;
+      *)
+        echo "   Persist for bash:"
+        echo "   echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.bashrc"
+        echo "   source ~/.bashrc"
+        echo ""
+        echo "   Persist for zsh:"
+        echo "   echo 'export PATH=\"\$PATH:${INSTALL_DIR}\"' >> ~/.zshrc"
+        echo "   source ~/.zshrc"
+        ;;
+    esac
+    echo ""
+    echo "2) Create a symlink in a PATH directory:"
+    echo "   ln -sf \"${INSTALL_DIR}/${BINARY_NAME}\" /usr/local/bin/${BINARY_NAME}"
   fi
 }
 
@@ -244,6 +269,12 @@ main() {
 
   echo ""
   log_success "Installation complete! 🎉"
+  echo ""
+  echo "Installed binary:"
+  echo "  ${INSTALL_DIR}/${BINARY_NAME}"
+  echo ""
+  echo "Quick check:"
+  echo "  ${INSTALL_DIR}/${BINARY_NAME} version"
   echo ""
   echo "Next steps:"
   echo "1. Run 'fm context' to see your current workflow status"

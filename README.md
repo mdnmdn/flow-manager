@@ -199,6 +199,26 @@ sudo dnf install libsecret-devel
 
 ## Install
 
+Install latest release via `curl`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mdnmdn/flow-manager/main/install.sh | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mdnmdn/flow-manager/main/install.sh | bash -s -- --version 1.0.0
+```
+
+Install to a custom directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mdnmdn/flow-manager/main/install.sh | bash -s -- --install-dir /usr/local/bin
+```
+
+Or build from source:
+
 ```bash
 cargo install --path .
 ```

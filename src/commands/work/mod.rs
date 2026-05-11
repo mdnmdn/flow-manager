@@ -232,9 +232,20 @@ pub async fn load(
     }
 
     if let Err(e) = git.checkout_branch(&branch).await {
+        let feature_prefix = format!("feature/{}-", wi.id);
+        let fix_prefix = format!("fix/{}-", wi.id);
+        let branch_hint = if let Some(suffix) = branch.strip_prefix(&feature_prefix) {
+            suffix.to_string()
+        } else if let Some(suffix) = branch.strip_prefix(&fix_prefix) {
+            suffix.to_string()
+        } else {
+            branch.clone()
+        };
         return Err(anyhow!(
-            "Branch `{}` not found locally or remotely.\nError: {}",
+            "Branch `{}` not found locally or remotely.\nTry: fm task load {} --init --branch {}\nError: {}",
             branch,
+            wi.id,
+            branch_hint,
             e
         ));
     }

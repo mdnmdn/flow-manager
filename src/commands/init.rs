@@ -15,10 +15,13 @@ type = "ado"
 [provider.ado]
 url = "https://dev.azure.com/your-org"
 project = "your-project"
-pat = "YOUR_PAT_HERE"
+#pat     = ""
+# set env: FM__PROVIDER__ADO__PAT="xxx"
 
 # [provider.github]
-# token = "YOUR_PAT_HERE"   # Optional: omit to use `fm auth login` (GitHub App Device Flow)
+# token = "YOUR_PAT_HERE"
+# or set env: FM__PROVIDER__GITHUB__TOKEN="xxx"
+# or use `fm auth login` (GitHub App Login)
 # owner = "your-org"
 # repo = "your-repo"
 # account = "default"       # Optional: which stored keychain account to use (fm auth login --account NAME)
@@ -311,18 +314,26 @@ fn build_toml(d: &Discovered, remote_url: Option<&str>) -> String {
                 "project = \"{}\"\n",
                 or_placeholder(project, "your-project")
             ));
-            out.push_str(&format!(
-                "pat     = \"{}\"\n",
-                or_placeholder(pat, "YOUR_PAT_HERE")
-            ));
+            if !pat.is_empty() {
+                out.push_str(&format!(
+                    "# detected ADO_PAT in env ({} chars)\n",
+                    pat.len()
+                ));
+            }
+            out.push_str("#pat     = \"\"\n");
+            out.push_str("# set env: FM__PROVIDER__ADO__PAT=\"xxx\"\n");
         }
         Some(DiscoveredProvider::GitHub { token, owner, repo }) => {
             out.push_str("[provider]\ntype = \"github\"\n\n");
             out.push_str("[provider.github]\n");
-            out.push_str(&format!(
-                "token = \"{}\"\n",
-                or_placeholder(token, "YOUR_TOKEN_HERE")
-            ));
+            if !token.is_empty() {
+                out.push_str(&format!(
+                    "# detected GITHUB_TOKEN/GH_TOKEN in env ({} chars)\n",
+                    token.len()
+                ));
+            }
+            out.push_str("# token = \"\"\n");
+            out.push_str("# set env: FM__PROVIDER__GITHUB__TOKEN=\"xxx\"\n");
             out.push_str(&format!(
                 "owner = \"{}\"\n",
                 or_placeholder(owner, "your-org")
@@ -357,7 +368,8 @@ fn build_toml(d: &Discovered, remote_url: Option<&str>) -> String {
             out.push_str("[provider.ado]\n");
             out.push_str("url     = \"https://dev.azure.com/your-org\"\n");
             out.push_str("project = \"your-project\"\n");
-            out.push_str("pat     = \"YOUR_PAT_HERE\"\n");
+            out.push_str("#pat     = \"\"\n");
+            out.push_str("# set env: FM__PROVIDER__ADO__PAT=\"xxx\"\n");
         }
     }
 
@@ -722,7 +734,8 @@ mod tests {
         assert!(out.contains("type = \"ado\""));
         assert!(out.contains("url     = \"https://dev.azure.com/myorg\""));
         assert!(out.contains("project = \"myproj\""));
-        assert!(out.contains("pat     = \"mypat\""));
+        assert!(out.contains("#pat     = \"\""));
+        assert!(out.contains("# set env: FM__PROVIDER__ADO__PAT=\"xxx\""));
         assert!(!out.contains("[sonar]"));
     }
 
@@ -740,7 +753,8 @@ mod tests {
         };
         let out = build_toml(&d, None);
         assert!(out.contains("type = \"github\""));
-        assert!(out.contains("token = \"ghp_abc\""));
+        assert!(out.contains("# token = \"\""));
+        assert!(out.contains("# set env: FM__PROVIDER__GITHUB__TOKEN=\"xxx\""));
         assert!(out.contains("owner = \"myorg\""));
         assert!(out.contains("repo  = \"myrepo\""));
     }

@@ -41,6 +41,7 @@ A review file has two required fields and three optional arrays.
 - All comment fields are plain text; no Markdown rendering is assumed by the CLI.
 - Threads whose status is not "active" are skipped during apply (warned during validate).
 - new_threads outside the PR diff are allowed but produce a validate warning.
+- For Azure DevOps, `new_threads[].file` must start with `/` (example: `/src/auth/oauth.ts`).
 - open_points refs that do not match any PR checklist item are a hard error.
 - in the comments add a little snippet of the code referenced (2-3 lines before and after the exact point of interest, or if it is big add at max 10 lines)
 - if the there are threads/points already existing but not addressed cite only in the summary comment, not in the individual thread comments to not create pollution
@@ -308,6 +309,7 @@ fn validate_review(
     live_threads: &[PullRequestThread],
     changed_files: &[ChangedFile],
     open_points_ctx: &[String],
+    enforce_ado_file_prefix: bool,
 ) -> (Vec<String>, Vec<String>) {
     let mut errors = vec![];
     let mut warnings = vec![];
@@ -348,6 +350,12 @@ fn validate_review(
 
     let valid_sev = ["critical", "major", "minor", "positive"];
     for nt in &review.new_threads {
+        if enforce_ado_file_prefix && !nt.file.starts_with('/') {
+            errors.push(format!(
+                "new_thread file '{}' must start with '/' for Azure DevOps (example: /src/path/file.ts)",
+                nt.file
+            ));
+        }
         if !valid_sev.contains(&nt.severity.as_str()) {
             errors.push(format!(
                 "new_thread on {} severity '{}' is invalid — must be one of: {}",
@@ -392,6 +400,22 @@ fn validate_review(
     (errors, warnings)
 }
 
+fn is_ado_provider(config: &Config) -> bool {
+    config
+        .provider
+        .as_ref()
+        .map(|p| p.kind.as_str() == "ado")
+        .unwrap_or(false)
+}
+
+fn normalize_ado_new_thread_paths(review: &mut ReviewFile) {
+    for nt in &mut review.new_threads {
+        if !nt.file.starts_with('/') {
+            nt.file = format!("/{}", nt.file);
+        }
+    }
+}
+
 pub async fn validate(file: String, pr_id: Option<String>, format: Option<String>) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
@@ -409,6 +433,7 @@ pub async fn validate(file: String, pr_id: Option<String>, format: Option<String
     } else {
         parse_yaml(&file)?
     };
+    let enforce_ado_file_prefix = is_ado_provider(&config);
 
     println!("Validating {} against PR #{}…\n", file, resolved_pr_id);
 
@@ -435,7 +460,13 @@ pub async fn validate(file: String, pr_id: Option<String>, format: Option<String
         .await?;
     let open_points_ctx = super::extract_open_points(pr.description.as_deref().unwrap_or(""));
 
-    let (errors, warnings) = validate_review(&review, &threads, &changed_files, &open_points_ctx);
+    let (errors, warnings) = validate_review(
+        &review,
+        &threads,
+        &changed_files,
+        &open_points_ctx,
+        enforce_ado_file_prefix,
+    );
 
     if !review.threads.is_empty() {
         println!("Threads");
@@ -536,11 +567,15 @@ pub async fn apply(
         super::resolve_pr_id(pr_id, vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
 
     let fmt = detect_format(&file, format.as_deref());
-    let review = if fmt == "md" {
+    let mut review = if fmt == "md" {
         parse_md(&file)?
     } else {
         parse_yaml(&file)?
     };
+    let is_ado = is_ado_provider(&config);
+    if is_ado {
+        normalize_ado_new_thread_paths(&mut review);
+    }
 
     let threads = vcs
         .get_pull_request_threads(&repo_name, &resolved_pr_id)
@@ -555,7 +590,8 @@ pub async fn apply(
         .await?;
     let open_points_ctx = super::extract_open_points(pr.description.as_deref().unwrap_or(""));
 
-    let (errors, warnings) = validate_review(&review, &threads, &changed_files, &open_points_ctx);
+    let (errors, warnings) =
+        validate_review(&review, &threads, &changed_files, &open_points_ctx, is_ado);
 
     if !errors.is_empty() {
         for e in &errors {
@@ -744,7 +780,7 @@ pub async fn apply(
                 step, total, nt.severity, label
             );
         } else {
-            let fp = nt.file.trim_start_matches('/');
+            let fp = nt.file.as_str();
             match vcs
                 .add_pull_request_thread(
                     &repo_name,

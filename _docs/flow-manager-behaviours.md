@@ -591,7 +591,7 @@ fm pr feedback validate
 - `summary` length ≥ 10 characters
 - `recommendation` is one of `approve`, `request_changes`, `needs_discussion`
 - Each `threads[]` entry: `action` is `resolve` or `reply`; thread id exists in the PR; warns if thread already resolved
-- Each `new_threads[]` entry: `severity` is one of `critical`, `major`, `minor`, `positive`; warns if file is outside the PR diff
+- Each `new_threads[]` entry: `severity` is one of `critical`, `major`, `minor`, `positive`; for ADO, `file` must start with `/`; warns if file is outside the PR diff
 - Each `open_points[]` entry: `status` is one of `addressed`, `not_addressed`, `partially_addressed`; `ref` must match an open point from the PR description
 
 **Output:**
@@ -691,7 +691,7 @@ threads:
     comment: TODO comment is not acceptable for merge. Open a tracked work item.
 
 new_threads:
-  - file: src/auth/oauth.ts
+  - file: /src/auth/oauth.ts
     line: 34
     severity: major
     comment: Token not scoped per-user. Two concurrent timeouts could collide.
@@ -718,7 +718,7 @@ comment: Config value now read from env.
 ```
 
 ```action:new_thread
-file: src/auth/oauth.ts
+file: /src/auth/oauth.ts
 line: 34
 severity: major
 comment: Token not scoped per-user.
