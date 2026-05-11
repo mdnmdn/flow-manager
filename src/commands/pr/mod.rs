@@ -371,8 +371,7 @@ pub async fn review(id: String) -> Result<()> {
         git.push(false).await?;
     }
 
-    let pr_id =
-        resolve_pr_id(Some(id), vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
+    let pr_id = resolve_pr_id(Some(id), vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
 
     let pr = vcs.get_pull_request_details(&repo_name, &pr_id).await?;
     let target_branch = pr.source_branch.replace("refs/heads/", "");
