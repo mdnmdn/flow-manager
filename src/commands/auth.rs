@@ -1,5 +1,5 @@
-use crate::auth::{app_config, device_flow, token_store};
 use crate::auth::token_store::AccountMeta;
+use crate::auth::{app_config, device_flow, token_store};
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 
@@ -11,7 +11,10 @@ pub async fn login(account: &str) -> Result<()> {
         )
     })?;
 
-    println!("Authenticating with GitHub (Device Flow) for account '{}'...", account);
+    println!(
+        "Authenticating with GitHub (Device Flow) for account '{}'...",
+        account
+    );
 
     let token = device_flow::run_device_flow(&client_id).await?;
     token_store::save(account, &token)?;
@@ -48,7 +51,10 @@ pub async fn status(account: &str) -> Result<()> {
 
     if stored.is_expired() {
         println!("Token for account '{}' is expired.", account);
-        println!("Run `fm auth login --account {}` to re-authenticate.", account);
+        println!(
+            "Run `fm auth login --account {}` to re-authenticate.",
+            account
+        );
         return Ok(());
     }
 
@@ -67,7 +73,10 @@ pub async fn status(account: &str) -> Result<()> {
         }
         None => {
             println!("Token for account '{}' is invalid or expired.", account);
-            println!("Run `fm auth login --account {}` to re-authenticate.", account);
+            println!(
+                "Run `fm auth login --account {}` to re-authenticate.",
+                account
+            );
         }
     }
 
@@ -82,7 +91,12 @@ pub async fn list() -> Result<()> {
     }
     println!("Stored GitHub accounts:");
     for meta in &accounts {
-        println!("  {} — @{} ({})", meta.alias, meta.username, meta.expiry_summary());
+        println!(
+            "  {} — @{} ({})",
+            meta.alias,
+            meta.username,
+            meta.expiry_summary()
+        );
     }
     Ok(())
 }

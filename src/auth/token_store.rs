@@ -49,7 +49,11 @@ impl StoredToken {
     pub fn seconds_until_expiry(&self) -> Option<u64> {
         let exp = self.expires_at?;
         let now = now_secs();
-        if exp > now { Some(exp - now) } else { Some(0) }
+        if exp > now {
+            Some(exp - now)
+        } else {
+            Some(0)
+        }
     }
 }
 
@@ -103,12 +107,9 @@ pub async fn load_valid_token(account: &str, client_id: &str) -> Result<Option<S
     }
 
     if let Some(ref refresh) = token.refresh_token {
-        match crate::auth::device_flow::refresh_token(client_id, refresh).await {
-            Ok(new_token) => {
-                save(account, &new_token)?;
-                return Ok(Some(new_token.access_token));
-            }
-            Err(_) => {}
+        if let Ok(new_token) = crate::auth::device_flow::refresh_token(client_id, refresh).await {
+            save(account, &new_token)?;
+            return Ok(Some(new_token.access_token));
         }
     }
 

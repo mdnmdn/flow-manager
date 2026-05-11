@@ -52,7 +52,10 @@ pub async fn run_device_flow(client_id: &str) -> Result<StoredToken> {
         .map_err(|e| anyhow!("Failed to request device code: {}", e))?;
 
     if !resp.status().is_success() {
-        bail!("GitHub returned HTTP {} for device code request", resp.status());
+        bail!(
+            "GitHub returned HTTP {} for device code request",
+            resp.status()
+        );
     }
 
     let code_resp: DeviceCodeResponse = resp
@@ -95,9 +98,7 @@ pub async fn run_device_flow(client_id: &str) -> Result<StoredToken> {
             .map_err(|e| anyhow!("Failed to parse token poll response: {}", e))?;
 
         if let Some(access_token) = result.access_token {
-            let expires_at = result
-                .expires_in
-                .map(|secs| now_secs() + secs);
+            let expires_at = result.expires_in.map(|secs| now_secs() + secs);
             return Ok(StoredToken {
                 access_token,
                 refresh_token: result.refresh_token,
@@ -142,9 +143,12 @@ pub async fn refresh_token(client_id: &str, refresh_token: &str) -> Result<Store
         .await
         .map_err(|e| anyhow!("Failed to parse refresh response: {}", e))?;
 
-    let access_token = result
-        .access_token
-        .ok_or_else(|| anyhow!("No access_token in refresh response (error: {:?})", result.error))?;
+    let access_token = result.access_token.ok_or_else(|| {
+        anyhow!(
+            "No access_token in refresh response (error: {:?})",
+            result.error
+        )
+    })?;
 
     let expires_at = result.expires_in.map(|secs| now_secs() + secs);
 

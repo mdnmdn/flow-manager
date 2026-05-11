@@ -47,7 +47,8 @@ fn resolve_token(config: &GitHubConfig) -> Result<String> {
                 return Err(anyhow!(
                     "GitHub App token for account '{}' expired.\n\
                      Run `fm auth login --account {}` to re-authenticate.",
-                    account, account
+                    account,
+                    account
                 ));
             }
             Ok(stored.access_token)
