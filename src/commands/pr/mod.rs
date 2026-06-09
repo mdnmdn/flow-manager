@@ -400,3 +400,25 @@ pub async fn comment(id: Option<String>, message: String) -> Result<()> {
 
     Ok(())
 }
+
+pub async fn open(id: Option<String>, show: bool) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let vcs = provider_set.vcs;
+    let git = LocalGitProvider;
+
+    let repo_name = git.get_repo_name()?;
+    let pr_id = resolve_pr_id(id, vcs.as_ref(), tracker.as_ref(), &git, &repo_name).await?;
+
+    let url = vcs.pull_request_url(&repo_name, &pr_id)?;
+
+    if show {
+        println!("{}", url);
+    } else {
+        println!("Opening {}...", url);
+        open::that(&url).map_err(|e| anyhow!("Failed to open browser: {}", e))?;
+    }
+
+    Ok(())
+}

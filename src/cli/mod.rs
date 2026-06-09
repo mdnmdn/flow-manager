@@ -321,6 +321,15 @@ pub enum TaskCommands {
         #[arg(long)]
         check: bool,
     },
+    /// Open the work item in the browser
+    #[command(alias = "o")]
+    Open {
+        /// WI id (optional, uses current context if omitted)
+        id: Option<String>,
+        /// Show the URL without opening the browser
+        #[arg(long)]
+        show: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -425,6 +434,15 @@ pub enum PrCommands {
         /// Print a sample template listing all available placeholders
         #[arg(long)]
         sample: bool,
+    },
+    /// Open the pull request in the browser
+    #[command(alias = "o")]
+    Open {
+        /// PR id, WI id, or branch (optional, uses current context if omitted)
+        id: Option<String>,
+        /// Show the URL without opening the browser
+        #[arg(long)]
+        show: bool,
     },
 }
 

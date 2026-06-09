@@ -777,6 +777,13 @@ impl IssueTracker for AzureDevOpsProvider {
             created_at_time: Some(time),
         })
     }
+
+    fn work_item_url(&self, id: &str) -> Result<String> {
+        Ok(format!(
+            "{}/{}/_workitems/edit/{}",
+            self.organization_url, self.project, id
+        ))
+    }
 }
 
 /// Parse a branch name from an ADO vstfs artifact URL.
@@ -2334,6 +2341,13 @@ impl VCSProvider for AzureDevOpsProvider {
             content: content.to_string(),
             replies: vec![],
         })
+    }
+
+    fn pull_request_url(&self, repository: &str, id: &str) -> Result<String> {
+        Ok(format!(
+            "{}/{}/_git/{}/pullrequest/{}",
+            self.organization_url, self.project, repository, id
+        ))
     }
 }
 

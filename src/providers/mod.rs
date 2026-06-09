@@ -83,6 +83,13 @@ pub trait IssueTracker {
     ) -> Result<WorkItemComment> {
         Err(anyhow::anyhow!("Adding comments not supported"))
     }
+
+    /// Return the browser-viewable URL for a work item
+    fn work_item_url(&self, _id: &str) -> Result<String> {
+        Err(anyhow::anyhow!(
+            "work_item_url not implemented for this provider"
+        ))
+    }
 }
 
 #[async_trait]
@@ -194,6 +201,13 @@ pub trait VCSProvider {
         _line: Option<u32>,
     ) -> Result<PullRequestThread> {
         Err(anyhow::anyhow!("Adding anchored threads not supported"))
+    }
+
+    /// Return the browser-viewable URL for a pull request
+    fn pull_request_url(&self, _repository: &str, _id: &str) -> Result<String> {
+        Err(anyhow::anyhow!(
+            "pull_request_url not implemented for this provider"
+        ))
     }
 
     // Remote Branch/Repo Management

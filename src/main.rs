@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
             cli::TaskCommands::Sync { rebase, check } => {
                 commands::task::sync(rebase, check).await?
             }
+            cli::TaskCommands::Open { id, show } => commands::task::open(id, show).await?,
         },
         cli::Commands::Pr { command } => match command {
             cli::PrCommands::Show {
@@ -137,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
                 show_closed_threads,
                 sample,
             } => commands::pr::review_prompt::run(pr, text, show_closed_threads, sample).await?,
+            cli::PrCommands::Open { id, show } => commands::pr::open(id, show).await?,
         },
         cli::Commands::Pipeline { command } => match command {
             cli::PipelineCommands::Run { id } => commands::pipeline::run(id).await?,

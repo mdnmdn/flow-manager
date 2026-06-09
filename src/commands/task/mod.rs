@@ -1,7 +1,7 @@
 use crate::commands::common::stash_and_push_current_activity;
 use crate::core::branch_cache::BranchCache;
 use crate::core::config::Config;
-use crate::core::context::{Context, ContextManager};
+use crate::core::context::{Context, ContextManager, IdResolution};
 use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::VCSProvider;
@@ -169,6 +169,41 @@ pub async fn comment(message: String) -> Result<()> {
 
     let new_comment = tracker.add_work_item_comment(&wi_id, &message).await?;
     println!("Comment added to WI #{}: {}", wi_id, new_comment.text);
+
+    Ok(())
+}
+
+pub async fn open(id: Option<String>, show: bool) -> Result<()> {
+    let config = Config::load()?;
+    let provider_set = ProviderSet::from_config(&config)?;
+    let tracker = provider_set.issue_tracker;
+    let git = LocalGitProvider;
+
+    let wi_id = if let Some(id_str) = id {
+        match ContextManager::resolve_id(&id_str) {
+            IdResolution::WorkItem(wi) | IdResolution::Ambiguous(wi) => wi,
+            _ => return Err(anyhow!("Could not resolve '{}' to a Work Item", id_str)),
+        }
+    } else {
+        let branch = git.get_current_branch().await?;
+        match ContextManager::detect(&branch) {
+            Context::Activity { wi_id, .. } => wi_id,
+            _ => {
+                return Err(anyhow!(
+                    "Not in an Activity context — provide a task id or run from an activity branch"
+                ))
+            }
+        }
+    };
+
+    let url = tracker.work_item_url(wi_id.as_str())?;
+
+    if show {
+        println!("{}", url);
+    } else {
+        println!("Opening {}...", url);
+        open::that(&url).map_err(|e| anyhow!("Failed to open browser: {}", e))?;
+    }
 
     Ok(())
 }

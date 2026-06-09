@@ -107,6 +107,18 @@ impl GitHubProvider {
         )
     }
 
+    fn web_base_url(&self) -> String {
+        if self.base_url.contains("api.github") {
+            "https://github.com".to_string()
+        } else {
+            self.base_url
+                .strip_suffix("/api")
+                .unwrap_or(&self.base_url)
+                .trim_end_matches('/')
+                .to_string()
+        }
+    }
+
     fn type_to_label(work_item_type: &str) -> String {
         match work_item_type {
             "Bug" => "type:bug".to_string(),
@@ -452,6 +464,14 @@ impl IssueTracker for GitHubProvider {
             created_at_date: None,
             created_at_time: None,
         })
+    }
+
+    fn work_item_url(&self, id: &str) -> Result<String> {
+        let base = self.web_base_url();
+        Ok(format!(
+            "{}/{}/{}/issues/{}",
+            base, self.owner, self.repo, id
+        ))
     }
 }
 
@@ -995,6 +1015,11 @@ impl VCSProvider for GitHubProvider {
                 replies: vec![],
             })
         }
+    }
+
+    fn pull_request_url(&self, _repository: &str, id: &str) -> Result<String> {
+        let base = self.web_base_url();
+        Ok(format!("{}/{}/{}/pull/{}", base, self.owner, self.repo, id))
     }
 }
 
