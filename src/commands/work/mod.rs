@@ -248,7 +248,7 @@ pub async fn load(
                     &branch,
                     &target_branch,
                     &wi.title,
-                    "PR created by fm load --init",
+                    "",
                     is_draft_supported,
                     &[&wi.id],
                 )
