@@ -23,6 +23,10 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = cli::parse();
 
+    if cli.debug {
+        cli::set_debug(true);
+    }
+
     match cli.command {
         cli::Commands::Task { command } => match command {
             cli::TaskCommands::New {
@@ -52,7 +56,8 @@ async fn main() -> anyhow::Result<()> {
                 target,
                 init,
                 branch,
-            } => commands::work::load(id, target, init, branch).await?,
+                load_branch,
+            } => commands::work::load(id, target, init, branch, load_branch).await?,
             cli::TaskCommands::List {
                 mine,
                 state,

@@ -3,6 +3,7 @@ use crate::core::models::{
     PullRequestComment, PullRequestThread, Repository, WorkItem, WorkItemComment, WorkItemFilter,
     WorkItemId,
 };
+use crate::debug;
 use crate::providers::{IssueTracker, PipelineProvider, VCSProvider};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -687,19 +688,141 @@ impl IssueTracker for AzureDevOpsProvider {
             return Ok(vec![]);
         }
         let body: Value = resp.json().await?;
-        let branches = body["relations"]
-            .as_array()
-            .map(|rels| {
-                rels.iter()
-                    .filter_map(|r| {
-                        if r["rel"].as_str()? != "ArtifactLink" {
-                            return None;
+        debug!(
+            "work item response keys: {:?}",
+            body.as_object().map(|o| o.keys().collect::<Vec<_>>())
+        );
+        let relations = match body["relations"].as_array() {
+            Some(r) => r,
+            None => {
+                debug!("no 'relations' field in response");
+                return Ok(vec![]);
+            }
+        };
+
+        debug!("work item relations count: {}", relations.len());
+        for (i, r) in relations.iter().enumerate() {
+            debug!(
+                "relation[{}]: rel={:?} url={:?}",
+                i,
+                r["rel"].as_str().unwrap_or(""),
+                r["url"].as_str().unwrap_or("")
+            );
+        }
+
+        let mut branches = Vec::new();
+        let mut pr_ids_with_repo: Vec<(String, String)> = Vec::new();
+
+        for r in relations {
+            let url_str = r["url"].as_str().unwrap_or("");
+
+            // Direct branch link: vstfs:///Git/Ref/…
+            match parse_branch_from_vstfs(url_str) {
+                Some(branch) => {
+                    debug!("parse_branch_from_vstfs -> Some({})", branch);
+                    branches.push(branch);
+                }
+                None => {
+                    debug!("parse_branch_from_vstfs -> None for {:?}", url_str);
+                }
+            }
+            // PR link: vstfs:///Git/PullRequestId/…
+            match parse_pr_from_vstfs(url_str) {
+                Some((pr_id, repo_uuid)) => {
+                    debug!(
+                        "parse_pr_from_vstfs -> Some(pr={}, repo={})",
+                        pr_id, repo_uuid
+                    );
+                    pr_ids_with_repo.push((pr_id, repo_uuid));
+                }
+                None => {
+                    debug!("parse_pr_from_vstfs -> None for {:?}", url_str);
+                }
+            }
+        }
+
+        // For any linked PRs, fetch their source branches using the repo UUID from VSTFS
+        for (pr_id, repo_uuid) in &pr_ids_with_repo {
+            let pr_url = self.v(&format!(
+                "{}/git/repositories/{}/pullrequests/{}",
+                self.base_api_url(),
+                repo_uuid,
+                pr_id
+            ));
+            debug!("fetching PR {}: {}", pr_id, pr_url);
+            match self.client.get(&pr_url).send().await {
+                Ok(pr_resp) => {
+                    debug!("PR response status: {}", pr_resp.status());
+                    if pr_resp.status().is_success() {
+                        if let Ok(pr_body) = pr_resp.json::<Value>().await {
+                            if let Some(src) = pr_body["sourceRefName"].as_str() {
+                                let branch = src.trim_start_matches("refs/heads/");
+                                if !branch.is_empty() {
+                                    debug!("PR source branch: {}", branch);
+                                    branches.push(branch.to_string());
+                                }
+                            }
                         }
-                        parse_branch_from_vstfs(r["url"].as_str()?)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                    }
+                }
+                Err(e) => {
+                    debug!("PR fetch failed: {}", e);
+                }
+            }
+        }
+
+        // Scan active PRs for ones that reference this work item
+        let prs_url = self.v(&format!(
+            "{}/git/repositories/{}/pullrequests?searchCriteria.status=active&$top=100",
+            self.base_api_url(),
+            self.project
+        ));
+        if let Ok(prs_resp) = self.client.get(&prs_url).send().await {
+            if prs_resp.status().is_success() {
+                if let Ok(prs_body) = prs_resp.json::<Value>().await {
+                    if let Some(items) = prs_body["value"].as_array() {
+                        for pr in items {
+                            let pr_number = pr["pullRequestId"].as_i64().unwrap_or(0);
+                            let wi_url = self.v(&format!(
+                                "{}/git/repositories/{}/pullRequests/{}/workitems",
+                                self.base_api_url(),
+                                self.project,
+                                pr_number
+                            ));
+                            if let Ok(wi_resp) = self.client.get(&wi_url).send().await {
+                                if wi_resp.status().is_success() {
+                                    if let Ok(wi_body) = wi_resp.json::<Value>().await {
+                                        if let Some(wi_items) = wi_body["value"].as_array() {
+                                            let wi_id_num: Option<i64> = id.as_str().parse().ok();
+                                            let linked = wi_items.iter().any(|wi| {
+                                                wi["id"].as_str() == Some(id.as_str())
+                                                    || wi_id_num
+                                                        .and_then(|n| {
+                                                            wi["id"].as_i64().map(|v| v == n)
+                                                        })
+                                                        .unwrap_or(false)
+                                            });
+                                            if linked {
+                                                if let Some(src) = pr["sourceRefName"].as_str() {
+                                                    let branch =
+                                                        src.trim_start_matches("refs/heads/");
+                                                    if !branch.is_empty()
+                                                        && !branches.contains(&branch.to_string())
+                                                    {
+                                                        branches.push(branch.to_string());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(branches)
     }
 
@@ -796,6 +919,20 @@ fn parse_branch_from_vstfs(url: &str) -> Option<String> {
     let last = parts.last()?;
     let encoded = last.strip_prefix("GB")?;
     Some(encoded.replace("%2F", "/"))
+}
+
+/// Parse a PR id and repo UUID from an ADO vstfs artifact URL.
+/// Format: `vstfs:///Git/PullRequestId/{projectId}%2F{repoId}%2F{prId}`
+fn parse_pr_from_vstfs(url: &str) -> Option<(String, String)> {
+    let suffix = url.split_once("Git/PullRequestId/")?.1;
+    let parts: Vec<&str> = suffix.split("%2F").collect();
+    if parts.len() >= 3 {
+        let repo_uuid = parts[1].to_string();
+        let pr_id = parts[2].to_string();
+        Some((pr_id, repo_uuid))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

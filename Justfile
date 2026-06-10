@@ -22,7 +22,7 @@ lint:
 	cargo clippy -- -D warnings
 
 # Run the CLI tool with arguments
-run:
+run *args:
 	cargo run -- {{args}}
 
 # Run the CLI tool with no arguments (shows help)

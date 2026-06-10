@@ -31,7 +31,7 @@ A review file has two required fields and three optional arrays.
     severity: critical | major | minor | positive
     comment:  string
 
-  open_points[]      — status of each PR description checklist item
+  open_points[]      — (optional, for textual reference only) status of each PR description checklist item
     ref:     string    must match (case-insensitive substring) an open point from the PR description
     status:  addressed | not_addressed | partially_addressed
     comment: string
@@ -42,7 +42,7 @@ A review file has two required fields and three optional arrays.
 - Threads whose status is not "active" are skipped during apply (warned during validate).
 - new_threads outside the PR diff are allowed but produce a validate warning.
 - For Azure DevOps, `new_threads[].file` must start with `/` (example: `/src/auth/oauth.ts`).
-- open_points refs that do not match any PR checklist item are a hard error.
+- open_points are optional and for textual reference only; they are not validated against PR description items.
 - in the comments add a little snippet of the code referenced (2-3 lines before and after the exact point of interest, or if it is big add at max 10 lines)
 - if the there are threads/points already existing but not addressed cite only in the summary comment, not in the individual thread comments to not create pollution
 - the output have to be correct yaml file, for long text or using special chars use yaml multiline strings for safety
@@ -89,22 +89,6 @@ pub fn schema_json_text() -> &'static str {
             "enum": ["critical", "major", "minor", "positive"]
           },
           "comment": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
-    "open_points": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["ref", "status", "comment"],
-        "additionalProperties": false,
-        "properties": {
-          "ref": { "type": "string" },
-          "status": {
-            "type": "string",
-            "enum": ["addressed", "not_addressed", "partially_addressed"]
-          },
-          "comment": { "type": "string" }
         }
       }
     }
@@ -161,21 +145,7 @@ properties:
           enum: [critical, major, minor, positive]
         comment:
           type: string
-          minLength: 1
-  open_points:
-    type: array
-    items:
-      type: object
-      required: [ref, status, comment]
-      additionalProperties: false
-      properties:
-        ref:
-          type: string
-        status:
-          type: string
-          enum: [addressed, not_addressed, partially_addressed]
-        comment:
-          type: string"#
+          minLength: 1"#
 }
 
 pub fn structure() -> Result<()> {
@@ -308,7 +278,6 @@ fn validate_review(
     review: &ReviewFile,
     live_threads: &[PullRequestThread],
     changed_files: &[ChangedFile],
-    open_points_ctx: &[String],
     enforce_ado_file_prefix: bool,
 ) -> (Vec<String>, Vec<String>) {
     let mut errors = vec![];
@@ -376,27 +345,6 @@ fn validate_review(
         }
     }
 
-    let valid_status = ["addressed", "not_addressed", "partially_addressed"];
-    for op in &review.open_points {
-        if !valid_status.contains(&op.status.as_str()) {
-            errors.push(format!(
-                "open_point '{}' status '{}' is invalid — must be one of: {}",
-                op.ref_,
-                op.status,
-                valid_status.join(", ")
-            ));
-        }
-        let matched = open_points_ctx
-            .iter()
-            .any(|p| p.to_lowercase().contains(&op.ref_.to_lowercase()));
-        if !matched {
-            errors.push(format!(
-                "open_point ref '{}' not found in PR open points",
-                op.ref_
-            ));
-        }
-    }
-
     (errors, warnings)
 }
 
@@ -455,18 +403,8 @@ pub async fn validate(file: String, pr_id: Option<String>, format: Option<String
         .get_pull_request_changed_files(&repo_name, &resolved_pr_id)
         .await
         .unwrap_or_default();
-    let pr = vcs
-        .get_pull_request_details(&repo_name, &resolved_pr_id)
-        .await?;
-    let open_points_ctx = super::extract_open_points(pr.description.as_deref().unwrap_or(""));
-
-    let (errors, warnings) = validate_review(
-        &review,
-        &threads,
-        &changed_files,
-        &open_points_ctx,
-        enforce_ado_file_prefix,
-    );
+    let (errors, warnings) =
+        validate_review(&review, &threads, &changed_files, enforce_ado_file_prefix);
 
     if !review.threads.is_empty() {
         println!("Threads");
@@ -501,21 +439,6 @@ pub async fn validate(file: String, pr_id: Option<String>, format: Option<String
                     "  ⚠️  {} is outside the PR diff — will still be posted",
                     nt.file
                 );
-            }
-        }
-        println!();
-    }
-
-    if !review.open_points.is_empty() {
-        println!("Open Points");
-        for op in &review.open_points {
-            let matched = open_points_ctx
-                .iter()
-                .any(|p| p.to_lowercase().contains(&op.ref_.to_lowercase()));
-            if matched {
-                println!("  ✅ \"{}\" matches context open point", op.ref_);
-            } else {
-                println!("  ❌ \"{}\" not found in context open points", op.ref_);
             }
         }
         println!();
@@ -585,13 +508,7 @@ pub async fn apply(
         .get_pull_request_changed_files(&repo_name, &resolved_pr_id)
         .await
         .unwrap_or_default();
-    let pr = vcs
-        .get_pull_request_details(&repo_name, &resolved_pr_id)
-        .await?;
-    let open_points_ctx = super::extract_open_points(pr.description.as_deref().unwrap_or(""));
-
-    let (errors, warnings) =
-        validate_review(&review, &threads, &changed_files, &open_points_ctx, is_ado);
+    let (errors, warnings) = validate_review(&review, &threads, &changed_files, is_ado);
 
     if !errors.is_empty() {
         for e in &errors {

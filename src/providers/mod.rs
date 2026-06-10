@@ -210,6 +210,11 @@ pub trait VCSProvider {
         ))
     }
 
+    /// Return source branch names of open PRs linked to the given work item
+    async fn get_pull_request_branches_for_work_item(&self, _wi_id: &str) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
     // Remote Branch/Repo Management
     async fn create_branch(&self, repository: &str, name: &str, source: &str) -> Result<()>;
     async fn delete_branch(&self, repository: &str, name: &str) -> Result<()>;

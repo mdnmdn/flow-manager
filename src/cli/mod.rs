@@ -1,4 +1,15 @@
 use clap::{Parser, Subcommand};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DEBUG: AtomicBool = AtomicBool::new(false);
+
+pub fn is_debug() -> bool {
+    DEBUG.load(Ordering::Relaxed)
+}
+
+pub fn set_debug(enabled: bool) {
+    DEBUG.store(enabled, Ordering::Relaxed);
+}
 
 #[derive(Parser)]
 #[command(author, version = option_env!("FM_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")), about, long_about = None)]
@@ -10,6 +21,10 @@ pub struct Cli {
     /// Output format
     #[arg(short, long, default_value = "markdown")]
     pub format: String,
+
+    /// Enable debug output
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -212,9 +227,12 @@ pub enum TaskCommands {
         /// Initialize branch and PR if missing
         #[arg(short, long)]
         init: bool,
-        /// Specify branch name for initialization
+        /// Branch slug for --init mode (creates feature/{id}-{slug})
         #[arg(short, long)]
         branch: Option<String>,
+        /// Full branch name to load directly (no init), e.g. feature/small-optimizations
+        #[arg(long)]
+        load_branch: Option<String>,
     },
     /// List work items
     // SPECIFICATION:

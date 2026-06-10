@@ -3,6 +3,7 @@ use crate::core::branch_cache::BranchCache;
 use crate::core::config::Config;
 use crate::core::context::{Context, ContextManager, IdResolution, OutputFormatter};
 use crate::core::models::{WorkItemFilter, WorkItemId};
+use crate::debug;
 use crate::providers::factory::ProviderSet;
 use crate::providers::git::LocalGitProvider;
 use crate::providers::sonar::SonarProvider;
@@ -167,6 +168,7 @@ pub async fn load(
     target: Option<String>,
     init: bool,
     branch_name: Option<String>,
+    load_branch: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
     let provider_set = ProviderSet::from_config(&config)?;
@@ -192,33 +194,57 @@ pub async fn load(
 
     git.fetch().await?;
 
-    let branch = match git.find_branch_for_wi(wi.id.as_str())? {
-        Some(b) => b,
-        None => {
-            // Fall back to artifact links stored in the issue tracker.
-            let remote_branches = git.run_git(&["branch", "-r"])?;
-            let linked = tracker
-                .get_linked_branch_names(&wi.id)
-                .await
-                .unwrap_or_default();
-            linked
-                .into_iter()
-                .find(|b| {
+    let repo_name = git.get_repo_name()?;
+
+    let branch = if let Some(bn) = &load_branch {
+        // --load-branch: use the full branch name as-is
+        bn.clone()
+    } else {
+        match git.find_branch_for_wi(wi.id.as_str())? {
+            Some(b) => {
+                debug!("convention match: {}", b);
+                b
+            }
+            None => {
+                // Fall back to artifact links and PR links stored in the issue tracker.
+                let remote_branches = git.run_git(&["branch", "-r"])?;
+                let linked = tracker
+                    .get_linked_branch_names(&wi.id)
+                    .await
+                    .unwrap_or_default();
+                debug!("linked branches for #{}: {:?}", wi.id, linked);
+                debug!(
+                    "remote branches (first 20): {:?}",
+                    remote_branches.lines().take(20).collect::<Vec<_>>()
+                );
+                let found = linked.into_iter().find(|b| {
                     remote_branches
                         .lines()
                         .any(|l| l.trim().trim_start_matches("origin/") == b)
-                })
-                .unwrap_or_else(|| {
-                    if let Some(bn) = branch_name {
-                        format!("feature/{}-{}", wi.id, bn)
-                    } else {
-                        ContextManager::derive_branch_name(&wi.id, &wi.title, &wi.work_item_type)
+                });
+                match found {
+                    Some(b) => {
+                        debug!("matched linked branch: {}", b);
+                        b
                     }
-                })
+                    None => {
+                        // --branch: use slug with convention
+                        if let Some(bn) = &branch_name {
+                            format!("feature/{}-{}", wi.id, bn)
+                        } else {
+                            debug!("no linked branch found on remote, deriving name");
+                            ContextManager::derive_branch_name(
+                                &wi.id,
+                                &wi.title,
+                                &wi.work_item_type,
+                            )
+                        }
+                    }
+                }
+            }
         }
     };
 
-    let repo_name = git.get_repo_name()?;
     let target_branch = target.unwrap_or(config.fm.default_target.clone());
 
     if init {
