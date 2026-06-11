@@ -293,6 +293,8 @@ pub async fn load(
                 }
             }
         }
+
+        git.fetch().await?;
     }
 
     if let Err(e) = git.checkout_branch(&branch).await {
